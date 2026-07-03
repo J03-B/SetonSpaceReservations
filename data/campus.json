@@ -1,0 +1,174 @@
+{
+  "campus": {
+    "name": "Seton Catholic College Preparatory",
+    "timezone": "America/New_York"
+  },
+  "buildings": [
+    {
+      "id": "corpus-christi",
+      "name": "Corpus Christi",
+      "rooms": [
+        {
+          "id": "innocents",
+          "name": "Innocents",
+          "slug": "innocents",
+          "requests": [
+            {
+              "start": "2026-07-01T14:00:00-04:00",
+              "end": "2026-07-01T16:00:00-04:00",
+              "status": "Reserved",
+              "requesterName": "Campus Ministry",
+              "requestedAt": "2026-06-27T10:15:00-04:00",
+              "category": "Club"
+            }
+          ]
+        },
+        {
+          "id": "patrick",
+          "name": "Patrick",
+          "slug": "patrick",
+          "requests": [
+            {
+              "start": "2026-07-02T09:00:00-04:00",
+              "end": "2026-07-02T11:00:00-04:00",
+              "status": "Pending",
+              "requesterName": "Science Dept",
+              "requestedAt": "2026-06-29T08:45:00-04:00",
+              "category": "Academic"
+            }
+          ]
+        },
+        {
+          "id": "bertoni",
+          "name": "Bertoni",
+          "slug": "bertoni",
+          "requests": []
+        },
+        {
+          "id": "neri",
+          "name": "Neri",
+          "slug": "neri",
+          "requests": [
+            {
+              "start": "2026-07-03T08:30:00-04:00",
+              "end": "2026-07-03T12:00:00-04:00",
+              "status": "Reserved",
+              "requesterName": "Student Council",
+              "requestedAt": "2026-06-26T16:20:00-04:00",
+              "category": "Club"
+            }
+          ]
+        },
+        {
+          "id": "savio",
+          "name": "Savio",
+          "slug": "savio",
+          "requests": [
+            {
+              "start": "2026-07-01T13:00:00-04:00",
+              "end": "2026-07-01T15:00:00-04:00",
+              "status": "Pending",
+              "requesterName": "Yearbook",
+              "requestedAt": "2026-06-28T14:10:00-04:00",
+              "category": "Other"
+            }
+          ]
+        },
+        {
+          "id": "joseph",
+          "name": "Joseph",
+          "slug": "joseph",
+          "requests": []
+        },
+        {
+          "id": "faustina-hall",
+          "name": "Faustina Hall",
+          "slug": "faustina-hall",
+          "requests": [
+            {
+              "start": "2026-06-30T09:00:00-04:00",
+              "end": "2026-06-30T11:00:00-04:00",
+              "status": "Pending",
+              "requesterName": "Theology Dept",
+              "requestedAt": "2026-06-29T07:30:00-04:00",
+              "category": "Academic"
+            },
+            {
+              "start": "2026-07-07T09:00:00-04:00",
+              "end": "2026-07-07T11:00:00-04:00",
+              "status": "Pending",
+              "requesterName": "Theology Dept",
+              "requestedAt": "2026-06-29T07:30:00-04:00",
+              "category": "Academic"
+            }
+          ]
+        },
+        {
+          "id": "francis",
+          "name": "Francis",
+          "slug": "francis",
+          "requests": [
+            {
+              "start": "2026-07-04T10:00:00-04:00",
+              "end": "2026-07-04T14:00:00-04:00",
+              "status": "Blocked",
+              "requesterName": "Facilities",
+              "requestedAt": "2026-06-25T09:00:00-04:00",
+              "category": "Other"
+            }
+          ]
+        },
+        {
+          "id": "fatima",
+          "name": "Fatima",
+          "slug": "fatima",
+          "requests": []
+        }
+      ]
+    },
+    {
+      "id": "seton-campus",
+      "name": "Seton campus",
+      "rooms": [
+        {
+          "id": "dmc",
+          "name": "DMC",
+          "slug": "dmc",
+          "requests": [
+            {
+              "start": "2026-07-01T08:00:00-04:00",
+              "end": "2026-07-01T17:00:00-04:00",
+              "status": "Blocked",
+              "requesterName": "Facilities",
+              "requestedAt": "2026-06-24T11:00:00-04:00",
+              "category": "Other"
+            }
+          ]
+        },
+        {
+          "id": "gym",
+          "name": "Gym",
+          "slug": "gym",
+          "requests": [
+            {
+              "start": "2026-06-30T15:00:00-04:00",
+              "end": "2026-06-30T18:00:00-04:00",
+              "status": "Reserved",
+              "requesterName": "Athletics",
+              "requestedAt": "2026-06-28T12:30:00-04:00",
+              "category": "Club"
+            },
+            {
+              "start": "2026-07-02T15:00:00-04:00",
+              "end": "2026-07-02T18:00:00-04:00",
+              "status": "Reserved",
+              "requesterName": "Athletics",
+              "requestedAt": "2026-06-28T12:30:00-04:00",
+              "category": "Club"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

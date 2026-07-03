@@ -1,0 +1,309 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — see docs/seton-space-reservations-style-guide.md §9
+ * Restrained institutional theme until Seton brand is confirmed.
+ */
+:root {
+  --surface: #ffffff;
+  --surface-subtle: #f7f8fa;
+  --surface-strong: #eef0f4;
+  --text-primary: #1a2332;
+  --text-secondary: #5c6678;
+  --text-inverse: #ffffff;
+  --border: #d8dde6;
+  --border-strong: #b8c0ce;
+  --action-primary: #1e4d8c;
+  --action-primary-hover: #163a6b;
+  --action-secondary: #eef0f4;
+  --focus: #2563eb;
+  --status-available: #1a7f4b;
+  --status-available-bg: #e8f5ee;
+  --status-pending: #9a6700;
+  --status-pending-bg: #fef6e0;
+  --status-reserved: #1e4d8c;
+  --status-reserved-bg: #e8eef7;
+  --status-blocked: #5c6678;
+  --status-blocked-bg: #eef0f4;
+  --status-closed: #8b95a5;
+  --status-closed-bg: #f3f4f6;
+  --status-success: #1a7f4b;
+  --status-warning: #9a6700;
+  --status-danger: #b42318;
+  --status-neutral: #5c6678;
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-strong: var(--surface-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-inverse: var(--text-inverse);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-action-primary: var(--action-primary);
+  --color-action-primary-hover: var(--action-primary-hover);
+  --color-action-secondary: var(--action-secondary);
+  --color-focus: var(--focus);
+  --color-status-available: var(--status-available);
+  --color-status-available-bg: var(--status-available-bg);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-reserved: var(--status-reserved);
+  --color-status-reserved-bg: var(--status-reserved-bg);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-blocked-bg: var(--status-blocked-bg);
+  --color-status-closed: var(--status-closed);
+  --color-status-closed-bg: var(--status-closed-bg);
+  --color-status-danger: var(--status-danger);
+  --color-status-success: var(--status-success);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Map drill-down transitions */
+.map-transition-layer {
+  transition:
+    opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center center;
+}
+
+.map-enter-active {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+}
+
+.map-enter-forward {
+  opacity: 0;
+  transform: scale(0.97) translateX(2%);
+}
+
+.map-enter-back {
+  opacity: 0;
+  transform: scale(0.97) translateX(-2%);
+}
+
+.map-exit-forward {
+  opacity: 0.4;
+  transform: scale(0.98) translateX(-1.5%);
+}
+
+.map-exit-back {
+  opacity: 0.4;
+  transform: scale(0.98) translateX(1.5%);
+}
+
+.planner-days-shift-forward {
+  animation: planner-days-enter-forward 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.planner-days-shift-back {
+  animation: planner-days-enter-back 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.planner-week-row-enter {
+  animation: planner-week-row-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.planner-week-row-enter-down {
+  animation: planner-week-row-enter-down 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.planner-week-row-enter-up {
+  animation: planner-week-row-enter-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.planner-drag-handle {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.planner-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: var(--surface-strong);
+  accent-color: var(--action-primary);
+  cursor: pointer;
+}
+
+.planner-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  border: 2px solid var(--surface);
+  background: var(--action-primary);
+  box-shadow: 0 1px 4px rgba(26, 35, 50, 0.18);
+  cursor: grab;
+}
+
+.planner-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  border: 2px solid var(--surface);
+  background: var(--action-primary);
+  box-shadow: 0 1px 4px rgba(26, 35, 50, 0.18);
+  cursor: grab;
+}
+
+.planner-time-wheel-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.planner-time-wheel-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.room-timeline-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 72%, var(--surface)) transparent;
+}
+
+.room-timeline-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.room-timeline-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.room-timeline-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface-subtle);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--border-strong) 72%, var(--surface));
+}
+
+.room-timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--action-primary) 38%, var(--border-strong));
+}
+
+.planner-time-wheel-mask {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24%,
+    black 76%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 24%,
+    black 76%,
+    transparent 100%
+  );
+}
+
+@keyframes planner-week-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes planner-week-row-enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-0.65rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes planner-week-row-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.65rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes planner-days-enter-forward {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes planner-days-enter-back {
+  from {
+    opacity: 0;
+    transform: translateX(-1.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planner-days-shift-forward,
+  .planner-days-shift-back,
+  .planner-week-row-enter,
+  .planner-week-row-enter-down,
+  .planner-week-row-enter-up {
+    animation: none;
+  }
+
+  .planner-drag-handle {
+    transition: none;
+  }
+
+  .map-transition-layer {
+    transition: opacity 0.15s ease;
+    transform: none !important;
+  }
+
+  .campus-map-glide {
+    transition: none !important;
+    transform: scale(1) !important;
+  }
+}

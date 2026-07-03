@@ -1,0 +1,31 @@
+/**
+ * Stable error codes — style guide §21.8
+ */
+export const ERROR_CODES = {
+  AUTH_REQUIRED: "AUTH_REQUIRED",
+  EMAIL_NOT_VERIFIED: "EMAIL_NOT_VERIFIED",
+  REQUESTER_ACCESS_REQUIRED: "REQUESTER_ACCESS_REQUIRED",
+  SPACE_NOT_FOUND: "SPACE_NOT_FOUND",
+  SPACE_INACTIVE: "SPACE_INACTIVE",
+  OUTSIDE_OPERATING_HOURS: "OUTSIDE_OPERATING_HOURS",
+  RESERVATION_CONFLICT: "RESERVATION_CONFLICT",
+  INVALID_STATE_TRANSITION: "INVALID_STATE_TRANSITION",
+  MANAGER_SCOPE_REQUIRED: "MANAGER_SCOPE_REQUIRED",
+  SELF_APPROVAL_NOT_ALLOWED: "SELF_APPROVAL_NOT_ALLOWED",
+  VERSION_CONFLICT: "VERSION_CONFLICT",
+  NOTIFICATION_FAILED: "NOTIFICATION_FAILED",
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+export class AppError extends Error {
+  constructor(
+    public readonly code: ErrorCode,
+    message: string,
+    public readonly fieldErrors?: Record<string, string>,
+  ) {
+    super(message);
+    this.name = "AppError";
+  }
+}

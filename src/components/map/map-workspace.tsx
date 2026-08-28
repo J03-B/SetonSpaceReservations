@@ -36,6 +36,7 @@ import {
   chromeSlideMotionClass,
   chromeSlideStyle,
   chromeTargetShown,
+  MAP_PLANNER_COLUMN_WIDTH_CLASS,
 } from "@/components/map/map-chrome-motion";
 import { cn } from "@/lib/utils";
 
@@ -321,11 +322,11 @@ const ACTIVITY_COLORS: Record<
   },
 };
 
-const ROOM_TIMELINE_HOUR_HEIGHT = 46;
-const ROOM_TIMELINE_LABEL_WIDTH = 42;
-const ROOM_DAY_HEADER_HEIGHT = 46;
-const ROOM_TIMELINE_MAX_VIEW_HEIGHT = 336;
-const ROOM_NOW_SCROLL_OFFSET = 86;
+const ROOM_TIMELINE_HOUR_HEIGHT = 52;
+const ROOM_TIMELINE_LABEL_WIDTH = 56;
+const ROOM_DAY_HEADER_HEIGHT = 52;
+const ROOM_TIMELINE_MIN_VIEW_HEIGHT = 280;
+const ROOM_NOW_SCROLL_OFFSET = 96;
 
 function resolveActivityCategory(
   block: PublicAvailabilitySlot,
@@ -433,8 +434,7 @@ function RoomSchedulePanel({
     1,
   );
   const timelineHeight = 24 * ROOM_TIMELINE_HOUR_HEIGHT;
-  const timelineViewportHeight = ROOM_TIMELINE_MAX_VIEW_HEIGHT;
-  const compactDayHeaders = calendarDays.length >= 6;
+  const compactDayHeaders = calendarDays.length >= 8;
   const gridTemplateColumns = `${ROOM_TIMELINE_LABEL_WIDTH}px repeat(${calendarDays.length}, minmax(0, 1fr))`;
   const todayIndex = calendarDays.findIndex((day) => isSameLocalDay(day, now));
   const scrollAnchor =
@@ -475,16 +475,16 @@ function RoomSchedulePanel({
 
   return (
     <div
-      className="pointer-events-auto absolute right-4 top-[4.75rem] z-40 flex max-h-[calc(100vh-6rem)] w-[min(25rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+      className="flex h-full min-h-[20rem] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface/97 shadow-lg backdrop-blur-sm"
       role="dialog"
       aria-modal="false"
       aria-labelledby="room-schedule-title"
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3.5">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3.5">
         <div className="min-w-0">
           {space.building ? (
-            <p className="truncate text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <p className="truncate text-xs font-medium uppercase tracking-wide text-text-secondary">
               {space.building}
             </p>
           ) : null}
@@ -517,12 +517,12 @@ function RoomSchedulePanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        <div className="overflow-hidden rounded-lg border border-border bg-surface-subtle">
+      <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface-subtle">
           <div
             ref={timelineScrollRef}
-            className="room-timeline-scroll relative overflow-x-hidden overflow-y-auto overscroll-contain"
-            style={{ height: timelineViewportHeight }}
+            className="room-timeline-scroll relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+            style={{ minHeight: ROOM_TIMELINE_MIN_VIEW_HEIGHT }}
             role="img"
             aria-label={`Scrollable calendar for ${space.name} from ${formatTimelineTime(
               selectedStart,
@@ -545,18 +545,13 @@ function RoomSchedulePanel({
                       compactDayHeaders ? "px-0.5" : "px-2",
                     )}
                   >
-                    <span
-                      className={cn(
-                        "max-w-full truncate font-semibold uppercase tracking-wide text-text-secondary",
-                        compactDayHeaders ? "text-[8px]" : "text-[10px]",
-                      )}
-                    >
+                    <span className="max-w-full truncate text-xs font-medium uppercase tracking-wide text-text-secondary">
                       {formatInTimeZone(day, space.timezone, "EEE")}
                     </span>
                     <span
                       className={cn(
                         "max-w-full truncate font-semibold text-text-primary",
-                        compactDayHeaders ? "text-[11px]" : "text-sm",
+                        compactDayHeaders ? "text-sm" : "text-base",
                       )}
                     >
                       {formatInTimeZone(
@@ -585,7 +580,7 @@ function RoomSchedulePanel({
                       className="pointer-events-none absolute left-0 right-0 border-t border-border/65"
                       style={{ top }}
                     >
-                      <span className="absolute left-1 top-1 text-[10px] font-medium text-text-secondary">
+                      <span className="absolute left-1.5 top-1 text-xs font-medium text-text-secondary">
                         {formatInTimeZone(tick, space.timezone, "h a")}
                       </span>
                     </div>
@@ -647,12 +642,12 @@ function RoomSchedulePanel({
                           <div
                             key={`${day.toISOString()}-${block.startAt}-${block.endAt}-${block.publicStatus}-${block.requestUpdatedAt ?? ""}`}
                             className={cn(
-                              "absolute left-1.5 right-1.5 overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm",
+                              "absolute left-1.5 right-1.5 overflow-hidden rounded-md border px-2.5 py-1.5 text-sm shadow-sm",
                               pending && "border-dashed opacity-70",
                             )}
                             style={{
                               top,
-                              height: Math.max(bottom - top, 28),
+                              height: Math.max(bottom - top, 32),
                               backgroundColor: colors.bg,
                               borderColor: colors.border,
                             }}
@@ -663,11 +658,11 @@ function RoomSchedulePanel({
                             >
                               {category}
                             </p>
-                            <p className="truncate text-[11px] text-text-secondary">
+                            <p className="truncate text-xs text-text-secondary">
                               {formatTimelineTime(start)}-{formatTimelineTime(end)}
                             </p>
                             {pending ? (
-                              <p className="truncate text-[11px] text-text-secondary">
+                              <p className="truncate text-xs text-text-secondary">
                                 Pending request
                               </p>
                             ) : null}
@@ -681,7 +676,7 @@ function RoomSchedulePanel({
                           style={{ top: roomDayTop(now) }}
                           aria-hidden="true"
                         >
-                          <span className="-ml-9 rounded-sm bg-red-600 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm">
+                          <span className="-ml-11 rounded-sm bg-red-600 px-1.5 text-xs font-semibold leading-5 text-white shadow-sm">
                             Now
                           </span>
                           <div className="h-0.5 flex-1 bg-red-600" />
@@ -695,7 +690,7 @@ function RoomSchedulePanel({
           </div>
         </div>
 
-        <section className="mt-4" aria-labelledby="next-reservations-heading">
+        <section className="mt-4 shrink-0" aria-labelledby="next-reservations-heading">
           <h3
             id="next-reservations-heading"
             className="mb-2 text-sm font-semibold text-text-primary"
@@ -739,7 +734,7 @@ function RoomSchedulePanel({
         </section>
       </div>
 
-      <div className="border-t border-border px-4 py-3">
+      <div className="shrink-0 border-t border-border px-5 py-3">
         <button
           type="button"
           onClick={onRequest}
@@ -841,12 +836,15 @@ export function MapWorkspace({
               <div
                 aria-label="Availability planner"
                 aria-hidden={!chromeIsInteractive(chromeVisible)}
-                className="pointer-events-none absolute bottom-[5.25rem] left-4 top-[4.75rem] w-[min(22rem,calc(100vw-2rem))] overflow-visible"
+                className={cn(
+                  "pointer-events-none absolute bottom-[5.25rem] left-4 top-[4.75rem] flex flex-col overflow-hidden",
+                  MAP_PLANNER_COLUMN_WIDTH_CLASS,
+                )}
               >
                 <div
                   className={cn(
                     chromeSlideMotionClass,
-                    "max-h-full overflow-y-auto",
+                    "flex h-full min-h-0 flex-col",
                   )}
                   style={chromeSlideStyle(
                     chromeVisible,
@@ -856,33 +854,37 @@ export function MapWorkspace({
                 >
                   <div
                     className={cn(
+                      "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto",
                       chromeIsInteractive(chromeVisible)
                         ? "pointer-events-auto"
                         : "pointer-events-none",
                     )}
                   >
-                    <AvailabilityPlanner
-                      rangeStart={rangeStart}
-                      rangeEnd={rangeEnd}
-                      onRangeChange={handleRangeChange}
-                    />
+                    <div className="shrink-0">
+                      <AvailabilityPlanner
+                        rangeStart={rangeStart}
+                        rangeEnd={rangeEnd}
+                        onRangeChange={handleRangeChange}
+                      />
+                    </div>
+                    {selectedSpace && !isCampusView ? (
+                      <div className="flex min-h-[20rem] flex-1 flex-col">
+                        <RoomSchedulePanel
+                          space={selectedSpace}
+                          slots={slots}
+                          rangeStart={rangeStart}
+                          rangeEnd={rangeEnd}
+                          onClose={() => setSelectedSlug(null)}
+                          onRequest={() => {
+                            window.location.href = `/sign-in?space=${selectedSpace.slug}`;
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
             </>
-          ) : null}
-
-          {selectedSpace && !isCampusView ? (
-            <RoomSchedulePanel
-              space={selectedSpace}
-              slots={slots}
-              rangeStart={rangeStart}
-              rangeEnd={rangeEnd}
-              onClose={() => setSelectedSlug(null)}
-              onRequest={() => {
-                window.location.href = `/sign-in?space=${selectedSpace.slug}`;
-              }}
-            />
           ) : null}
         </div>
       </div>

@@ -232,27 +232,46 @@ function pointOnClock(degrees: number, radius: number): { x: number; y: number }
 
 function ClockHands({ minutes }: { minutes: number }) {
   const { hourDegrees, minuteDegrees } = clockHandAngles(minutes);
+  const hour = pointOnClock(hourDegrees - 90, 8);
+  const minute = pointOnClock(minuteDegrees - 90, 12.5);
 
   return (
-    <span
-      className="pointer-events-none absolute inset-1.5 z-10 rounded-full"
+    <svg
+      className="pointer-events-none absolute inset-1 z-10"
+      viewBox="0 0 40 40"
       aria-hidden="true"
     >
-      <span className="absolute inset-0 rounded-full border border-action-primary/20" />
-      <span
-        className="absolute inset-0"
-        style={{ transform: `rotate(${hourDegrees}deg)` }}
-      >
-        <span className="absolute left-1/2 top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-full rounded-full bg-action-primary" />
-      </span>
-      <span
-        className="absolute inset-0"
-        style={{ transform: `rotate(${minuteDegrees}deg)` }}
-      >
-        <span className="absolute left-1/2 top-1/2 h-3.5 w-[2px] -translate-x-1/2 -translate-y-full rounded-full bg-action-primary" />
-      </span>
-      <span className="absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-action-primary" />
-    </span>
+      <circle
+        cx="20"
+        cy="20"
+        r="16"
+        fill="none"
+        stroke="currentColor"
+        className="text-action-primary/25"
+        strokeWidth="1.5"
+      />
+      <line
+        x1="20"
+        y1="20"
+        x2={hour.x}
+        y2={hour.y}
+        stroke="currentColor"
+        className="text-action-primary"
+        strokeLinecap="round"
+        strokeWidth="2.75"
+      />
+      <line
+        x1="20"
+        y1="20"
+        x2={minute.x}
+        y2={minute.y}
+        stroke="currentColor"
+        className="text-action-primary"
+        strokeLinecap="round"
+        strokeWidth="1.75"
+      />
+      <circle cx="20" cy="20" r="1.8" className="fill-action-primary" />
+    </svg>
   );
 }
 
@@ -364,7 +383,7 @@ function RangeField({
       <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
         {label}
       </span>
-      <div className="rounded-md border border-border bg-surface-subtle px-3 py-2.5">
+      <div className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
         {children}
       </div>
     </div>
@@ -461,7 +480,7 @@ export function AvailabilityPlanner({
   const measureGrid = useCallback(() => {
     const grid = gridRef.current;
     if (!grid || weeks.length === 0) {
-      return { colWidth: 40, rowHeight: 44 };
+      return { colWidth: 80, rowHeight: 84 };
     }
     const rect = grid.getBoundingClientRect();
     const firstRow = grid.querySelector<HTMLElement>("[data-week-row]");
@@ -498,8 +517,8 @@ export function AvailabilityPlanner({
     const metrics = getDayCellMetrics(snappedDay, grid, weeksRef.current);
     if (!metrics) return;
 
-    ghost.style.width = "2.5rem";
-    ghost.style.height = "2.5rem";
+    ghost.style.width = `${metrics.width}px`;
+    ghost.style.height = `${metrics.height}px`;
 
     const gridRect = grid.getBoundingClientRect();
     const ptrX = drag.pointerX - gridRect.left;
@@ -723,22 +742,22 @@ export function AvailabilityPlanner({
   return (
     <section
       className={cn(
-        "rounded-lg border border-border bg-surface/97 p-4 shadow-lg backdrop-blur-sm",
+        "rounded-xl border border-border bg-surface/97 p-5 shadow-lg backdrop-blur-sm",
         className,
       )}
       aria-labelledby="availability-planner-heading"
     >
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-5 flex items-center justify-between gap-3">
         <h2
           id="availability-planner-heading"
-          className="text-lg font-semibold text-text-primary"
+          className="text-xl font-semibold text-text-primary"
         >
           Time range
         </h2>
         <button
           type="button"
           onClick={jumpToNow}
-          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-action-primary hover:bg-surface-subtle"
+          className="shrink-0 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-action-primary hover:bg-surface-subtle"
         >
           Now
         </button>
@@ -754,7 +773,7 @@ export function AvailabilityPlanner({
         {draggingHandle ? (
           <div
             ref={ghostRef}
-            className="planner-drag-handle pointer-events-none absolute left-0 top-0 z-30 rounded-lg border-[3px] shadow-md"
+            className="planner-drag-handle pointer-events-none absolute left-0 top-0 z-30 rounded-xl border-[3px] shadow-md"
             aria-hidden="true"
             style={{
               borderColor: "var(--text-primary)",
@@ -763,8 +782,26 @@ export function AvailabilityPlanner({
           />
         ) : null}
 
-        <div className="flex flex-col gap-1">
-          {weeks.map((weekDays, weekIndex) => {
+        {weeks[0] ? (
+          <div className="mb-2 grid grid-cols-7 gap-1.5">
+            {weeks[0].map((day) => (
+              <span
+                key={day.toISOString()}
+                className={cn(
+                  "text-center text-xs font-medium uppercase tracking-wide",
+                  isSameDay(day, today)
+                    ? "text-action-primary"
+                    : "text-text-secondary",
+                )}
+              >
+                {format(day, "EEE")}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-1.5">
+          {weeks.map((weekDays) => {
             const weekKey = weekDays[0].toISOString();
             const segment = weekRangeSegment(weekDays, rangeLoDay, rangeHiDay);
             const isNewRow = newWeekKeys.has(weekKey);
@@ -775,7 +812,7 @@ export function AvailabilityPlanner({
                 key={weekKey}
                 data-week-row
                 className={cn(
-                  "relative grid grid-cols-7 gap-1",
+                  "relative grid grid-cols-7 gap-1.5",
                   isNewRow &&
                     enterDir === "up" &&
                     "planner-week-row-enter-up",
@@ -786,7 +823,7 @@ export function AvailabilityPlanner({
               >
                 {segment ? (
                   <div
-                    className="pointer-events-none absolute top-[18px] h-10 rounded-lg bg-action-primary/30"
+                    className="pointer-events-none absolute inset-y-0 rounded-xl bg-action-primary/30"
                     style={{
                       left: `calc(${(segment.lo / 7) * 100}% + 1px)`,
                       width: `calc(${((segment.hi - segment.lo + 1) / 7) * 100}% - 2px)`,
@@ -816,30 +853,15 @@ export function AvailabilityPlanner({
                   return (
                     <div
                       key={day.toISOString()}
-                      className="relative z-[1] flex flex-col items-center py-0.5"
+                      className="relative z-[1] min-w-0"
                     >
-                      {weekIndex === 0 ? (
-                        <span
-                          className={cn(
-                            "relative z-20 mb-0.5 text-[10px] font-medium uppercase tracking-wide",
-                            isToday
-                              ? "text-action-primary"
-                              : "text-text-secondary",
-                          )}
-                        >
-                          {format(day, "EEE")}
-                        </span>
-                      ) : (
-                        <span className="mb-0.5 h-[14px]" aria-hidden="true" />
-                      )}
-
                       <div
                         data-day-cell
-                        className="relative flex size-10 items-center justify-center"
+                        className="relative aspect-square w-full"
                       >
                         {!inRange && !isHandle ? (
                           <span
-                            className="pointer-events-none absolute inset-0 rounded-lg border border-border/60 bg-surface-subtle/70"
+                            className="pointer-events-none absolute inset-0 rounded-xl border border-border/60 bg-surface-subtle/70"
                             aria-hidden="true"
                           />
                         ) : null}
@@ -847,7 +869,7 @@ export function AvailabilityPlanner({
                         {isHandle && !isDraggingThis ? (
                           <span
                             className={cn(
-                              "pointer-events-none absolute inset-0 z-20 rounded-lg border-[3px] border-text-primary shadow-sm",
+                              "pointer-events-none absolute inset-0 z-20 rounded-xl border-[3px] border-text-primary shadow-sm",
                               isStart && isEnd && "scale-90",
                             )}
                             aria-hidden="true"
@@ -868,7 +890,7 @@ export function AvailabilityPlanner({
                         {!isHandle ? (
                           <span
                             className={cn(
-                              "relative z-30 text-sm font-bold",
+                              "absolute inset-0 z-30 flex items-center justify-center text-lg font-bold",
                               inRange && "text-action-primary",
                               isToday && !inRange && "text-action-primary",
                               !inRange && !isToday && "text-text-secondary",
@@ -884,13 +906,13 @@ export function AvailabilityPlanner({
                               type="button"
                               aria-label="Drag to set start date"
                               onPointerDown={onHandlePointerDown("start")}
-                              className="absolute -bottom-1.5 -left-1.5 -top-1.5 z-40 w-[calc(50%+0.375rem)] touch-none cursor-grab rounded-l-lg bg-transparent active:cursor-grabbing"
+                              className="absolute -bottom-1 -left-1 -top-1 z-40 w-[calc(50%+0.25rem)] touch-none cursor-grab rounded-l-xl bg-transparent active:cursor-grabbing"
                             />
                             <button
                               type="button"
                               aria-label="Drag to set end date"
                               onPointerDown={onHandlePointerDown("end")}
-                              className="absolute -bottom-1.5 -right-1.5 -top-1.5 z-40 w-[calc(50%+0.375rem)] touch-none cursor-grab rounded-r-lg bg-transparent active:cursor-grabbing"
+                              className="absolute -bottom-1 -right-1 -top-1 z-40 w-[calc(50%+0.25rem)] touch-none cursor-grab rounded-r-xl bg-transparent active:cursor-grabbing"
                             />
                           </>
                         ) : null}
@@ -900,7 +922,7 @@ export function AvailabilityPlanner({
                             aria-label={`Drag to set ${dragHandle} date`}
                             onPointerDown={onHandlePointerDown(dragHandle)}
                             className={cn(
-                              "absolute -inset-1.5 z-40 touch-none rounded-lg bg-transparent",
+                              "absolute -inset-1 z-40 touch-none rounded-xl bg-transparent",
                               draggingHandle === dragHandle
                                 ? "cursor-grabbing"
                                 : "cursor-grab",
@@ -917,11 +939,12 @@ export function AvailabilityPlanner({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-5 grid grid-cols-2 gap-4">
         <RangeField label="Start date">
           <PlannerDatePicker
             value={rangeStart}
             onChange={(day) => commitRange("start", day, startMinutes)}
+            displayClassName="text-base"
           />
         </RangeField>
 
@@ -929,6 +952,7 @@ export function AvailabilityPlanner({
           <PlannerTimePicker
             minutes={startMinutes}
             onChange={(m) => commitRange("start", startDay, m)}
+            displayClassName="text-base"
           />
         </RangeField>
 
@@ -936,6 +960,7 @@ export function AvailabilityPlanner({
           <PlannerDatePicker
             value={rangeEnd}
             onChange={(day) => commitRange("end", day, endMinutes)}
+            displayClassName="text-base"
           />
         </RangeField>
 
@@ -943,6 +968,7 @@ export function AvailabilityPlanner({
           <PlannerTimePicker
             minutes={endMinutes}
             onChange={(m) => commitRange("end", endDay, m)}
+            displayClassName="text-base"
           />
         </RangeField>
       </div>

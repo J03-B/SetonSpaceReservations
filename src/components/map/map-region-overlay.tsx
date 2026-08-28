@@ -31,6 +31,58 @@ const CAMPUS_OUTSET_SMOOTH = 0.16;
 /** Extra invisible hit slop on touch screens */
 const CAMPUS_MOBILE_HIT_OUTSET = 0.75;
 const FLOOR_MOBILE_HIT_OUTSET = 0.55;
+/** Integer screen-px strokes so scaled maps do not alias to mixed 1px/2px edges. */
+const FLOOR_STROKE_REST = 2;
+const FLOOR_STROKE_HOVER = 3;
+const FLOOR_STROKE_SELECTED = 4;
+const CAMPUS_STROKE_REST = 2;
+const CAMPUS_STROKE_ACTIVE = 3;
+
+function PolygonWithSmoothStroke({
+  points,
+  fill,
+  fillOpacity,
+  stroke,
+  strokeWidth,
+  className,
+}: {
+  points: string;
+  fill: string;
+  fillOpacity?: number;
+  stroke: string;
+  strokeWidth: number;
+  className?: string;
+}) {
+  return (
+    <>
+      <polygon
+        points={points}
+        fill={fill}
+        fillOpacity={fillOpacity}
+        stroke={stroke}
+        strokeOpacity={0.28}
+        strokeWidth={strokeWidth + 2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        paintOrder="fill stroke"
+        shapeRendering="geometricPrecision"
+        className={className}
+      />
+      <polygon
+        points={points}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="geometricPrecision"
+        className={className}
+      />
+    </>
+  );
+}
 
 function CampusBuildingPolygon({
   basePoints,
@@ -119,19 +171,15 @@ function CampusBuildingPolygon({
         onClick?.();
       }}
     >
-      <polygon
+      <PolygonWithSmoothStroke
         points={morphedPoints}
         fill={
           active
             ? `rgba(255, 255, 255, ${0.12 + progress * 0.1})`
             : "transparent"
         }
-        stroke={active ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.9)"}
-        strokeWidth={2 + progress * 0.85}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-        paintOrder="stroke fill"
+        stroke={active ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.95)"}
+        strokeWidth={active ? CAMPUS_STROKE_ACTIVE : CAMPUS_STROKE_REST}
         className="pointer-events-none"
       />
       <polygon
@@ -191,17 +239,19 @@ function FloorRoomPolygon({
         onClick?.();
       }}
     >
-      <polygon
+      <PolygonWithSmoothStroke
         points={points}
         fill={colors.fill}
         fillOpacity={dimmed ? FLOOR_DIMMED_OPACITY : 1}
         stroke={selected ? "#facc15" : colors.stroke}
-        strokeWidth={selected ? 0.65 : hovered ? 0.48 : 0.4}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-        paintOrder="stroke fill"
-        className="pointer-events-none transition-[fill-opacity,stroke-width] duration-500 ease-in-out"
+        strokeWidth={
+          selected
+            ? FLOOR_STROKE_SELECTED
+            : hovered
+              ? FLOOR_STROKE_HOVER
+              : FLOOR_STROKE_REST
+        }
+        className="pointer-events-none"
       />
       <polygon
         points={hitPoints}
@@ -389,7 +439,7 @@ export function MapRegionRectButton({
       className={cn(
         "absolute transition-all duration-200",
         isFloor
-          ? "border-2 hover:brightness-125 focus-visible:ring-2 focus-visible:ring-focus"
+          ? "border-[6px] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-focus"
           : "flex flex-col items-center justify-center border-2 hover:brightness-110 hover:scale-[1.02] focus-visible:scale-[1.02]",
         selected && "ring-4 ring-focus ring-offset-1 ring-offset-surface-subtle",
       )}
@@ -571,6 +621,11 @@ export function MapRegionLabelLayer({
         const baseTransform = mapRotated
           ? "translate(-50%, -50%) rotate(-90deg)"
           : "translate(-50%, -50%)";
+        const labelLines =
+          region.mapLabelLines && region.mapLabelLines.length > 0
+            ? region.mapLabelLines
+            : [region.label];
+        const campusLabel = !floorLabels;
 
         return (
           <div
@@ -594,13 +649,22 @@ export function MapRegionLabelLayer({
           >
             <span
               className={cn(
-                "text-pretty rounded-md bg-surface/94 font-semibold leading-snug text-text-primary shadow-sm backdrop-blur-[1px]",
-                mobileMode
-                  ? "max-w-[7.5rem] px-1.5 py-0.5 text-[9px] leading-tight"
-                  : "max-w-[10.5rem] px-2 py-1 text-[11px] sm:max-w-[12rem] sm:text-xs",
+                "rounded-lg bg-surface/94 font-semibold text-text-primary shadow-sm backdrop-blur-[1px]",
+                campusLabel
+                  ? mobileMode
+                    ? "max-w-[15rem] px-3 py-1.5 text-lg leading-tight"
+                    : "max-w-[24rem] px-4 py-2 text-[22px] leading-tight sm:text-2xl"
+                  : mobileMode
+                    ? "max-w-[7.5rem] px-1.5 py-0.5 text-[9px] leading-tight"
+                    : "max-w-[10.5rem] px-2 py-1 text-[11px] leading-snug sm:max-w-[12rem] sm:text-xs",
+                labelLines.length === 1 && "whitespace-nowrap",
               )}
             >
-              {region.label}
+              {labelLines.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
             </span>
             {sublabel ? (
               <span className="rounded bg-surface/90 px-1.5 py-0.5 text-[10px] font-medium text-action-primary">

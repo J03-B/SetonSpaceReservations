@@ -68,6 +68,11 @@ function formatRegionBlock(r: MapRegion, indent: string): string {
   if (r.spaceSlug) extras.push(`spaceSlug: "${r.spaceSlug}"`);
   if (r.hoverGroupId) extras.push(`hoverGroupId: "${r.hoverGroupId}"`);
   if (r.hideLabel) extras.push(`hideLabel: true`);
+  if (r.mapLabelLines?.length) {
+    extras.push(
+      `mapLabelLines: [${r.mapLabelLines.map((line) => `"${line.replace(/"/g, '\\"')}"`).join(", ")}]`,
+    );
+  }
   const extra = extras.length ? `,\n${indent}  ${extras.join(`,\n${indent}  `)}` : "";
 
   const pointsBlock = regionHasPolygon(r)

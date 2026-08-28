@@ -38,6 +38,8 @@ export interface MapRegion {
   hoverGroupId?: string;
   /** Omit map label (e.g. secondary wing of a grouped building) */
   hideLabel?: boolean;
+  /** Campus map label lines. When set, each entry is its own line. */
+  mapLabelLines?: string[];
   /** Drill down to another map level */
   childMapId?: string;
   /** Link to reservable space slug (master plan spaces table) */
@@ -65,6 +67,7 @@ export const MAP_LEVELS: Record<string, MapLevel> = {
       {
         id: "catc",
         label: "Carlo Acutis Tech Center",
+        mapLabelLines: ["Carlo Acutis", "Tech Center"],
         x: 44.76,
         y: 72.57,
         width: 3.93,

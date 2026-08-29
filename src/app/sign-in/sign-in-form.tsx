@@ -308,7 +308,7 @@ function SignInFormFields({
                 role="alert"
                 className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-16 items-center justify-center px-2 text-center text-lg font-medium text-status-danger"
               >
-                {verifyState.error}
+                {verifyState?.error}
               </p>
             ) : null}
           </div>

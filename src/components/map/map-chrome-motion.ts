@@ -19,6 +19,8 @@ export const MAP_PLANNER_MAX_WIDTH_PX = 40 * 16;
 export const MAP_PLANNER_VIEWPORT_GUTTER_PX = 32;
 /** Gap between the stacked left column and the focused room. */
 export const MAP_ROOM_FOCUS_GAP_PX = 16;
+/** Right gutter: `right-4` + floor switcher + gap so the plan is not under it. */
+export const MAP_FLOOR_SWITCHER_INSET_PX = 160;
 
 export const MAP_PLANNER_COLUMN_WIDTH_CLASS =
   "w-[min(40rem,calc(100vw-2rem))]";
@@ -39,7 +41,7 @@ export function mapSelectedRoomInsets(viewportWidth: number): {
       MAP_PLANNER_LEFT_PX +
       mapPlannerColumnWidthPx(viewportWidth) +
       MAP_ROOM_FOCUS_GAP_PX,
-    right: MAP_PLANNER_LEFT_PX,
+    right: MAP_FLOOR_SWITCHER_INSET_PX,
   };
 }
 

@@ -437,58 +437,51 @@ body {
   animation: sign-in-continue-error-text 0.75s ease both;
 }
 
-@keyframes watermark-coffee-pulse {
+@keyframes watermark-donate-glow {
   0%,
   100% {
-    transform: scale(1);
     box-shadow:
-      0 0 0 0 color-mix(in srgb, #16a34a 55%, transparent),
-      0 6px 18px color-mix(in srgb, #16a34a 38%, transparent);
+      0 0 0 0 color-mix(in srgb, var(--action-primary) 28%, transparent),
+      0 4px 12px color-mix(in srgb, var(--action-primary) 22%, transparent);
   }
 
   50% {
-    transform: scale(1.06);
     box-shadow:
-      0 0 0 14px transparent,
-      0 10px 26px color-mix(in srgb, #16a34a 48%, transparent);
+      0 0 0 10px transparent,
+      0 6px 16px color-mix(in srgb, var(--action-primary) 30%, transparent);
   }
 }
 
-@keyframes watermark-donate-icon-sway {
-  0%,
-  100% {
-    transform: rotate(-15deg);
-  }
-
-  50% {
-    transform: rotate(15deg);
-  }
+.watermark-donate-btn {
+  position: relative;
+  isolation: isolate;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-.watermark-coffee-pulse {
+.watermark-donate-btn-face {
+  background: color-mix(in srgb, var(--action-primary) 62%, white);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--action-primary) 22%, transparent);
+  transition:
+    transform 150ms ease-out,
+    background-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+.watermark-credit-open .watermark-donate-btn-face {
+  animation: watermark-donate-glow 2.8s ease-in-out infinite;
+}
+
+.watermark-donate-btn:hover .watermark-donate-btn-face,
+.watermark-donate-btn:focus-visible .watermark-donate-btn-face {
+  animation: none;
+  transform: scale(1.12);
   background: var(--action-primary);
-  box-shadow: 0 6px 18px color-mix(in srgb, #16a34a 38%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--action-primary) 42%, transparent);
 }
 
-.watermark-credit-open .watermark-coffee-pulse {
-  animation: watermark-coffee-pulse 2.8s ease-in-out infinite;
-}
-
-.watermark-credit-open .watermark-coffee-pulse svg {
-  animation: watermark-donate-icon-sway 3.4s ease-in-out infinite;
-}
-
-.watermark-credit-open .watermark-coffee-pulse:hover,
-.watermark-credit-open .watermark-coffee-pulse:focus-visible {
-  animation: none;
-  transform: scale(1.06);
-  background: var(--action-primary-hover);
-}
-
-.watermark-credit-open .watermark-coffee-pulse:hover svg,
-.watermark-credit-open .watermark-coffee-pulse:focus-visible svg {
-  animation: none;
-  transform: none;
+.watermark-donate-btn:active .watermark-donate-btn-face {
+  transform: scale(1.04);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -529,13 +522,8 @@ body {
     animation: none;
   }
 
-  .watermark-coffee-pulse {
+  .watermark-donate-btn-face {
     animation: none;
-    box-shadow: none;
-  }
-
-  .watermark-coffee-pulse svg {
-    animation: none;
-    transform: none;
+    transition: none;
   }
 }

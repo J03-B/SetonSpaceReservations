@@ -6,7 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 const CREDIT_LINE_ONE = "Developed by Joe Benin.";
 const CREDIT_LINE_TWO = "Support is appreciated!";
 const HIDE_DELAY_MS = 700;
-const DONATE_URL = "https://donate.stripe.com/00w4gydoD7KQcXD8js9ws00";
+const DONATE_URL = "https://donate.stripe.com/bJe6oG70faX20aRfLU9ws01";
 const DONATE_WINDOW = "joe-benin-donate";
 
 type ApplePayWindow = Window & {
@@ -33,7 +33,7 @@ function shouldOpenApplePayFullPage(): boolean {
 
 function openDonatePopup(anchor: HTMLElement) {
   const width = 500;
-  const height = Math.min(window.screen.availHeight - 24, 1000);
+  const height = Math.min(window.screen.availHeight - 48, 976);
   const rect = anchor.getBoundingClientRect();
   const screenLeft = window.screenLeft ?? window.screenX;
   const screenTop = window.screenTop ?? window.screenY;
@@ -96,6 +96,7 @@ export function DeveloperWatermark() {
   const creditId = useId();
   const hideTimerRef = useRef<number | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
+  const [creditInteractive, setCreditInteractive] = useState(false);
 
   const showCredit = useCallback(() => {
     if (hideTimerRef.current !== null) {
@@ -103,6 +104,7 @@ export function DeveloperWatermark() {
       hideTimerRef.current = null;
     }
     setCreditOpen(true);
+    setCreditInteractive(true);
   }, []);
 
   const scheduleHideCredit = useCallback(() => {
@@ -111,7 +113,10 @@ export function DeveloperWatermark() {
     }
     hideTimerRef.current = window.setTimeout(() => {
       setCreditOpen(false);
-      hideTimerRef.current = null;
+      hideTimerRef.current = window.setTimeout(() => {
+        setCreditInteractive(false);
+        hideTimerRef.current = null;
+      }, 300);
     }, HIDE_DELAY_MS);
   }, []);
 
@@ -152,9 +157,9 @@ export function DeveloperWatermark() {
           <div
             className={`w-max transition duration-300 ease-out motion-reduce:transition-none ${
               creditOpen
-                ? "pointer-events-auto translate-x-0 opacity-100"
-                : "pointer-events-none translate-x-2 opacity-0"
-            }`}
+                ? "translate-x-0 opacity-100"
+                : "translate-x-2 opacity-0"
+            } ${creditInteractive ? "" : "pointer-events-none"}`}
           >
             <div className="flex w-max items-center gap-5 rounded-xl border border-border bg-surface p-4 shadow-lg sm:gap-6 sm:p-5">
               <p
@@ -170,10 +175,13 @@ export function DeveloperWatermark() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Donate to Joe Benin with Apple Pay or card"
-                className="watermark-coffee-pulse inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-text-inverse no-underline sm:h-14 sm:w-14"
+                className="watermark-donate-btn inline-flex h-14 w-14 shrink-0 items-center justify-center no-underline"
+                onPointerEnter={showCredit}
                 onClick={openDonateFromLink}
               >
-                <DonateIcon />
+                <span className="watermark-donate-btn-face inline-flex size-12 items-center justify-center rounded-full text-text-inverse sm:size-[3.25rem]">
+                  <DonateIcon />
+                </span>
               </a>
             </div>
           </div>

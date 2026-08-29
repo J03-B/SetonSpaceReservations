@@ -265,7 +265,7 @@ export function MapRegionEditor() {
                 value={draftSpaceSlug}
                 onChange={(e) => setDraftSpaceSlug(e.target.value)}
                 className="min-h-11 w-full rounded-md border border-border px-3 py-2 text-sm"
-                placeholder="faustina-hall"
+                placeholder="faustina"
               />
             </div>
           </div>

@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
 
   const spaces = await getPublicSpaces();
   const space = spaceSlug
-    ? spaces.find((s) => s.slug === spaceSlug || s.id === spaceSlug)
+    ? spaces.find(
+        (s) => (s.slug === spaceSlug || s.id === spaceSlug) && s.isActive,
+      )
     : undefined;
 
   const defaultRange = defaultAvailabilityRange();

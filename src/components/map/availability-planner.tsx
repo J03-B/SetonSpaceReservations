@@ -4,8 +4,6 @@ import {
   addDays,
   format,
   isSameDay,
-  setHours,
-  setMinutes,
   startOfDay,
   startOfWeek,
 } from "date-fns";
@@ -18,8 +16,11 @@ import {
   useState,
 } from "react";
 import {
+  applyMinutesToDay,
   clampMinutes,
   minutesSinceMidnight,
+  pickDateRangeHandle,
+  placeRangeHandle,
 } from "@/lib/availability/range-time";
 import {
   PlannerDatePicker,
@@ -39,11 +40,6 @@ interface DragViewportHint {
   focusDay: Date | null;
   expandUpWeeks: number;
   expandDownWeeks: number;
-}
-
-function applyMinutesToDay(day: Date, minutes: number): Date {
-  const base = startOfDay(day);
-  return setMinutes(setHours(base, Math.floor(minutes / 60)), minutes % 60);
 }
 
 function computeCalendarWeeks(
@@ -118,32 +114,42 @@ function hitTestDay(
   const rows = Array.from(
     gridEl.querySelectorAll<HTMLElement>("[data-week-row]"),
   );
-  const firstRect = rows[0]?.getBoundingClientRect();
-  if (!firstRect) return null;
+  if (rows.length === 0) return null;
 
-  const colWidth = firstRect.width / 7;
-  const col = Math.min(
-    6,
-    Math.max(0, Math.floor((clientX - firstRect.left) / colWidth)),
-  );
-
-  const weekIndex = rows.findIndex((row) => {
-    const rect = row.getBoundingClientRect();
-    return clientY >= rect.top - 6 && clientY <= rect.bottom + 6;
-  });
-
-  if (weekIndex === -1) {
-    if (clientY < firstRect.top) {
-      return weeks[0]?.[col] ?? null;
+  for (let weekIndex = 0; weekIndex < rows.length; weekIndex++) {
+    const cells = rows[weekIndex].querySelectorAll<HTMLElement>("[data-day-cell]");
+    for (let col = 0; col < cells.length; col++) {
+      const rect = cells[col].getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        return weeks[weekIndex]?.[col] ?? null;
+      }
     }
-    const lastRect = rows[rows.length - 1]?.getBoundingClientRect();
-    if (lastRect && clientY > lastRect.bottom) {
-      return weeks[weeks.length - 1]?.[col] ?? null;
-    }
-    return null;
   }
 
-  return weeks[weekIndex]?.[col] ?? null;
+  const firstRect = rows[0].getBoundingClientRect();
+  const lastRect = rows[rows.length - 1]?.getBoundingClientRect();
+  const colForX = (row: HTMLElement) => {
+    const cells = row.querySelectorAll<HTMLElement>("[data-day-cell]");
+    for (let col = 0; col < cells.length; col++) {
+      if (clientX <= cells[col].getBoundingClientRect().right) return col;
+    }
+    return Math.max(0, cells.length - 1);
+  };
+
+  if (clientY < firstRect.top) {
+    return weeks[0]?.[colForX(rows[0])] ?? null;
+  }
+  if (lastRect && clientY > lastRect.bottom) {
+    const last = rows[rows.length - 1];
+    return weeks[weeks.length - 1]?.[colForX(last)] ?? null;
+  }
+
+  return null;
 }
 
 function getDayCellMetrics(
@@ -415,9 +421,13 @@ export function AvailabilityPlanner({
     pointerX: number;
     pointerY: number;
     originMinutes: number;
+    originDayMs: number;
+    anchorDayMs: number;
+    anchorMinutes: number;
     snappedDayMs: number;
     visualX: number;
     visualY: number;
+    ghostPlaced: boolean;
     rowHeight: number;
     expandUpLatched: boolean;
     expandDownLatched: boolean;
@@ -492,20 +502,24 @@ export function AvailabilityPlanner({
 
   const commitRange = useCallback(
     (handle: DragHandle, day: Date, minutes: number) => {
-      const next = applyMinutesToDay(day, minutes);
-      if (handle === "start") {
-        if (next.getTime() > rangeEnd.getTime()) {
-          onRangeChange(rangeEnd, next);
-        } else {
-          onRangeChange(next, rangeEnd);
-        }
-      } else if (next.getTime() < rangeStart.getTime()) {
-        onRangeChange(next, rangeStart);
-      } else {
-        onRangeChange(rangeStart, next);
-      }
+      const other = handle === "start" ? rangeEnd : rangeStart;
+      const placed = placeRangeHandle(day, minutes, other);
+      onRangeChange(placed.start, placed.end);
     },
     [onRangeChange, rangeEnd, rangeStart],
+  );
+
+  const onCalendarDaySelect = useCallback(
+    (day: Date) => {
+      const handle = pickDateRangeHandle(day, rangeStart, rangeEnd);
+      if (!handle) return;
+      commitRange(
+        handle,
+        day,
+        handle === "start" ? startMinutes : endMinutes,
+      );
+    },
+    [commitRange, endMinutes, rangeEnd, rangeStart, startMinutes],
   );
 
   const updateGhostPosition = useCallback((snappedDay: Date) => {
@@ -526,8 +540,14 @@ export function AvailabilityPlanner({
     const targetX = metrics.x + (ptrX - metrics.x) * POINTER_BLEND;
     const targetY = metrics.y + (ptrY - metrics.y) * POINTER_BLEND;
 
-    drag.visualX += (targetX - drag.visualX) * 0.32;
-    drag.visualY += (targetY - drag.visualY) * 0.32;
+    if (!drag.ghostPlaced) {
+      drag.visualX = metrics.x;
+      drag.visualY = metrics.y;
+      drag.ghostPlaced = true;
+    } else {
+      drag.visualX += (targetX - drag.visualX) * 0.32;
+      drag.visualY += (targetY - drag.visualY) * 0.32;
+    }
 
     ghost.style.transform = `translate(${drag.visualX}px, ${drag.visualY}px) translate(-50%, -50%)`;
   }, []);
@@ -609,12 +629,25 @@ export function AvailabilityPlanner({
 
     if (snappedMs !== drag.snappedDayMs) {
       drag.snappedDayMs = snappedMs;
-      commitRange(drag.handle, snappedDay, drag.originMinutes);
+      const other = applyMinutesToDay(
+        new Date(drag.anchorDayMs),
+        drag.anchorMinutes,
+      );
+      const placed = placeRangeHandle(
+        snappedDay,
+        drag.originMinutes,
+        other,
+      );
+      onRangeChange(placed.start, placed.end);
+      if (placed.handle !== drag.handle) {
+        drag.handle = placed.handle;
+        setDraggingHandle(placed.handle);
+      }
     }
 
     updateGhostPosition(snappedDay);
     rafRef.current = requestAnimationFrame(dragLoopRef.current);
-  }, [commitRange, updateGhostPosition]);
+  }, [onRangeChange, updateGhostPosition]);
 
   useLayoutEffect(() => {
     dragLoopRef.current = dragLoop;
@@ -628,6 +661,8 @@ export function AvailabilityPlanner({
       const { rowHeight } = measureGrid();
       const originDate = handle === "start" ? startDay : endDay;
       const originMinutes = handle === "start" ? startMinutes : endMinutes;
+      const anchorDate = handle === "start" ? endDay : startDay;
+      const anchorMinutes = handle === "start" ? endMinutes : startMinutes;
       const grid = gridRef.current;
       const visibleWeeks = weeksRef.current;
       const firstWeek = visibleWeeks[0];
@@ -646,13 +681,6 @@ export function AvailabilityPlanner({
         }
       }
 
-      setDraggingHandle(handle);
-      setDragHint({
-        focusDay: originDate,
-        expandUpWeeks: 0,
-        expandDownWeeks: 0,
-      });
-
       dragRef.current = {
         handle,
         startX: e.clientX,
@@ -660,9 +688,13 @@ export function AvailabilityPlanner({
         pointerX: e.clientX,
         pointerY: e.clientY,
         originMinutes,
+        originDayMs: originDate.getTime(),
+        anchorDayMs: anchorDate.getTime(),
+        anchorMinutes,
         snappedDayMs: originDate.getTime(),
         visualX,
         visualY,
+        ghostPlaced: false,
         rowHeight,
         expandUpLatched: false,
         expandDownLatched: false,
@@ -676,52 +708,69 @@ export function AvailabilityPlanner({
         moved: false,
       };
 
-      requestAnimationFrame(() => updateGhostPosition(originDate));
-      rafRef.current = requestAnimationFrame(dragLoopRef.current);
+      const onMove = (ev: PointerEvent) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+
+        if (!drag.moved) {
+          if (Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY) < DRAG_THRESHOLD_PX) {
+            return;
+          }
+          drag.moved = true;
+          drag.pointerX = ev.clientX;
+          drag.pointerY = ev.clientY;
+          setDraggingHandle(drag.handle);
+          setDragHint({
+            focusDay: new Date(drag.originDayMs),
+            expandUpWeeks: 0,
+            expandDownWeeks: 0,
+          });
+          rafRef.current = requestAnimationFrame(dragLoopRef.current);
+          return;
+        }
+
+        drag.pointerX = ev.clientX;
+        drag.pointerY = ev.clientY;
+      };
+
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+
+        const drag = dragRef.current;
+        const wasClick = Boolean(drag && !drag.moved);
+        const originDayMs = drag?.originDayMs;
+        finishDrag();
+        if (wasClick && originDayMs != null) {
+          onCalendarDaySelect(new Date(originDayMs));
+        }
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
     [
       endDay,
       endMinutes,
+      finishDrag,
       measureGrid,
+      onCalendarDaySelect,
       startDay,
       startMinutes,
-      updateGhostPosition,
     ],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!draggingHandle) return;
+    const drag = dragRef.current;
+    if (!drag) return;
+    drag.ghostPlaced = false;
+    updateGhostPosition(new Date(drag.snappedDayMs));
+  }, [draggingHandle, updateGhostPosition]);
 
-    const onMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-
-      if (
-        !drag.moved &&
-        Math.abs(e.clientX - drag.pointerX) < DRAG_THRESHOLD_PX &&
-        Math.abs(e.clientY - drag.pointerY) < DRAG_THRESHOLD_PX
-      ) {
-        return;
-      }
-      drag.moved = true;
-      drag.pointerX = e.clientX;
-      drag.pointerY = e.clientY;
-    };
-
-    const onUp = () => finishDrag();
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-  }, [draggingHandle, finishDrag]);
-
-  const jumpToNow = useCallback(() => {
+  const jumpToToday = useCallback(() => {
     const now = new Date();
     const startM = clampMinutes(minutesSinceMidnight(now));
     const endM = clampMinutes(startM + 120);
@@ -756,10 +805,10 @@ export function AvailabilityPlanner({
         </h2>
         <button
           type="button"
-          onClick={jumpToNow}
+          onClick={jumpToToday}
           className="shrink-0 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-action-primary hover:bg-surface-subtle"
         >
-          Now
+          Today
         </button>
       </div>
 
@@ -779,7 +828,21 @@ export function AvailabilityPlanner({
               borderColor: "var(--text-primary)",
               backgroundColor: "rgba(30, 77, 140, 0.18)",
             }}
-          />
+          >
+            {isSameDay(startDay, endDay) ? (
+              <ClockRange
+                startMinutes={startMinutes}
+                endMinutes={endMinutes}
+              />
+            ) : (
+              <ClockHands
+                minutes={
+                  dragRef.current?.originMinutes ??
+                  (draggingHandle === "start" ? startMinutes : endMinutes)
+                }
+              />
+            )}
+          </div>
         ) : null}
 
         {weeks[0] ? (
@@ -868,10 +931,7 @@ export function AvailabilityPlanner({
 
                         {isHandle && !isDraggingThis ? (
                           <span
-                            className={cn(
-                              "pointer-events-none absolute inset-0 z-20 rounded-xl border-[3px] border-text-primary shadow-sm",
-                              isStart && isEnd && "scale-90",
-                            )}
+                            className="pointer-events-none absolute inset-0 z-20 rounded-xl border-[3px] border-text-primary shadow-sm"
                             aria-hidden="true"
                           />
                         ) : null}
@@ -888,16 +948,24 @@ export function AvailabilityPlanner({
                         ) : null}
 
                         {!isHandle ? (
-                          <span
+                          <button
+                            type="button"
+                            onClick={() => onCalendarDaySelect(day)}
+                            aria-label={
+                              pickDateRangeHandle(day, rangeStart, rangeEnd) ===
+                              "end"
+                                ? `Set end date to ${format(day, "MMMM d")}`
+                                : `Set start date to ${format(day, "MMMM d")}`
+                            }
                             className={cn(
-                              "absolute inset-0 z-30 flex items-center justify-center text-lg font-bold",
+                              "absolute inset-0 z-30 flex items-center justify-center rounded-xl text-lg font-bold",
                               inRange && "text-action-primary",
                               isToday && !inRange && "text-action-primary",
                               !inRange && !isToday && "text-text-secondary",
                             )}
                           >
                             {format(day, "d")}
-                          </span>
+                          </button>
                         ) : null}
 
                         {isStart && isEnd && !isDraggingThis ? (

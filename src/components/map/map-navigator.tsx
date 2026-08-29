@@ -5,7 +5,11 @@ import type { PublicAvailabilitySlot, PublicSpace } from "@/lib/domain/types";
 import type { PublicStatus } from "@/lib/domain/statuses";
 import {
   findCampusRegionForChildMap,
+  findCampusShortcutForFocus,
   findRegionBySpaceSlug,
+  findRegionInMap,
+  getMapFloor,
+  getMapFloorCount,
   getMapLevel,
   getMapPathTo,
   ROOT_MAP_ID,
@@ -17,7 +21,12 @@ import { InteractiveMapCanvas } from "./interactive-map-canvas";
 import { CampusMapEditor } from "./campus-map-editor";
 import { BuildingMapEditor } from "./building-map-editor";
 import { BuildingDrillFrame } from "./building-drill-frame";
-import { getDrillCrossfadeOpacity, type DrillCameraState } from "@/lib/map/drill-frame";
+import { BuildingFloorStack } from "./building-floor-stack";
+import {
+  computeFloorScaleProgress,
+  getDrillCrossfadeOpacity,
+  type DrillCameraState,
+} from "@/lib/map/drill-frame";
 import type { ChromeMotionMode } from "@/components/map/map-chrome-motion";
 import { DRILL_TRANSITION_MS } from "./campus-map-viewport";
 import { cn } from "@/lib/utils";
@@ -34,6 +43,14 @@ interface DrillTransition {
 interface ExitTransition {
   region: MapRegion;
   floorMapId: string;
+}
+
+function resolveSpaceForRegion(
+  region: MapRegion,
+  spaces: PublicSpace[],
+): PublicSpace | undefined {
+  const slug = region.spaceSlug ?? region.id;
+  return spaces.find((entry) => entry.slug === slug);
 }
 
 interface MapNavigatorProps {
@@ -83,6 +100,8 @@ export function MapNavigator({
   );
   const [drillStartCamera, setDrillStartCamera] =
     useState<DrillCameraState | null>(null);
+  const [floorIndex, setFloorIndex] = useState(0);
+  const floorIndexRef = useRef(0);
   const drillStartCameraRef = useRef<DrillCameraState | null>(null);
   const transitionRafRef = useRef<number | null>(null);
   const navMetaRef = useRef<MapNavigationMeta | null>(null);
@@ -95,7 +114,7 @@ export function MapNavigator({
   const currentMapId = stack[stack.length - 1] ?? ROOT_MAP_ID;
   const currentLevel = getMapLevel(currentMapId);
   const selectedRegionMatch = selectedSpaceSlug
-    ? findRegionBySpaceSlug(selectedSpaceSlug)
+    ? findRegionBySpaceSlug(selectedSpaceSlug, currentMapId)
     : undefined;
   const selectedRegionId = useMemo(() => {
     if (!selectedRegionMatch) return null;
@@ -157,7 +176,7 @@ export function MapNavigator({
 
       const selectedSlug = selectedSpaceSlugRef.current;
       const roomMatch = selectedSlug
-        ? findRegionBySpaceSlug(selectedSlug)
+        ? findRegionBySpaceSlug(selectedSlug, currentId)
         : undefined;
       const roomOnFloor =
         roomMatch && roomMatch.mapId === currentId ? roomMatch : undefined;
@@ -183,6 +202,24 @@ export function MapNavigator({
         chromeShown = chromeShownRef.current;
       }
 
+      const floorMapId = drillNow?.childMapId ?? currentId;
+      const floorLevelNow = getMapLevel(floorMapId);
+      const floorCount = getMapFloorCount(floorLevelNow);
+      const stackedFloors = floorCount > 1 && floorMapId !== ROOT_MAP_ID;
+      const floorNow = stackedFloors && floorLevelNow
+        ? getMapFloor(floorLevelNow, floorIndexRef.current)
+        : null;
+      const floorControl =
+        stackedFloors && floorNow && floorLevelNow
+          ? {
+              current: floorNow.number,
+              min: getMapFloor(floorLevelNow, 0).number,
+              max: getMapFloor(floorLevelNow, floorCount - 1).number,
+              canUp: !isAnimating && floorIndexRef.current < floorCount - 1,
+              canDown: !isAnimating && floorIndexRef.current > 0,
+            }
+          : null;
+
       const prev = navMetaRef.current;
       if (
         !force &&
@@ -198,7 +235,10 @@ export function MapNavigator({
           (crumb, i) =>
             crumb.id === breadcrumbs[i]?.id &&
             crumb.title === breadcrumbs[i]?.title,
-        )
+        ) &&
+        prev.floorControl?.current === floorControl?.current &&
+        prev.floorControl?.canUp === floorControl?.canUp &&
+        prev.floorControl?.canDown === floorControl?.canDown
       ) {
         return;
       }
@@ -210,6 +250,7 @@ export function MapNavigator({
         isTransitioning: isAnimating,
         chromeShown,
         chromeMotionMode,
+        floorControl,
       };
 
       navMetaRef.current = next;
@@ -226,6 +267,15 @@ export function MapNavigator({
     selectedSpaceSlugRef.current = selectedSpaceSlug;
     publishNavMeta(1, true);
   }, [selectedSpaceSlug, publishNavMeta]);
+
+  useEffect(() => {
+    if (!selectedSpaceSlug) return;
+    const match = findRegionBySpaceSlug(selectedSpaceSlug, currentMapId);
+    if (match?.mapId !== currentMapId) return;
+    if (match.floorIndex === floorIndexRef.current) return;
+    floorIndexRef.current = match.floorIndex;
+    setFloorIndex(match.floorIndex);
+  }, [selectedSpaceSlug, currentMapId]);
 
   const runTransition = useCallback(
     (from: number, to: number, onDone: () => void) => {
@@ -269,12 +319,24 @@ export function MapNavigator({
 
   const getRegionStatus = useCallback(
     (region: MapRegion): PublicStatus | null => {
-      if (!region.spaceSlug) return null;
-      const space = spaces.find((s) => s.slug === region.spaceSlug);
-      if (!space) return null;
+      const space = resolveSpaceForRegion(region, spaces);
+      if (!space?.isActive) return null;
       return getStatusForRange(slots, space.id, rangeStart, rangeEnd);
     },
     [spaces, slots, rangeStart, rangeEnd],
+  );
+
+  const isRegionActive = useCallback(
+    (region: MapRegion) => {
+      if (region.childMapId) return true;
+      // Floor-plan rooms stay hoverable even if the space is not in the live catalog yet.
+      if (region.spaceSlug) {
+        const space = resolveSpaceForRegion(region, spaces);
+        return space ? space.isActive : true;
+      }
+      return resolveSpaceForRegion(region, spaces)?.isActive === true;
+    },
+    [spaces],
   );
 
   const finishDrill = useCallback(
@@ -295,6 +357,15 @@ export function MapNavigator({
   const startDrillIn = useCallback(
     (region: MapRegion, childMapId: string) => {
       const nextDrill = { region, childMapId };
+      const focus = region.focusRegionId
+        ? findRegionInMap(childMapId, region.focusRegionId)
+        : undefined;
+      if (focus) {
+        floorIndexRef.current = focus.floorIndex;
+        setFloorIndex(focus.floorIndex);
+        const space = resolveSpaceForRegion(focus.region, spaces);
+        if (space?.isActive) onRoomSelect(space, focus.region);
+      }
       exitDrillRef.current = null;
       drillRef.current = nextDrill;
       setExitDrill(null);
@@ -303,6 +374,10 @@ export function MapNavigator({
       setDrillSyncCamera(null);
       setTransitionT(0);
       chromeShownRef.current = false;
+      if (!focus) {
+        floorIndexRef.current = 0;
+        setFloorIndex(0);
+      }
       setDrill(nextDrill);
       publishNavMeta(0, true);
       requestAnimationFrame(() => {
@@ -311,7 +386,7 @@ export function MapNavigator({
       });
       runTransition(0, 1, () => finishDrill(childMapId));
     },
-    [finishDrill, runTransition, publishNavMeta],
+    [finishDrill, runTransition, publishNavMeta, spaces, onRoomSelect],
   );
 
   const finishExitDrill = useCallback(
@@ -330,6 +405,8 @@ export function MapNavigator({
       setTransitionT(0);
       setAnimClass("map-enter-active");
       navMetaRef.current = null;
+      floorIndexRef.current = 0;
+      setFloorIndex(0);
       onNavigationMetaChange?.(null);
     },
     [onNavigationMetaChange],
@@ -392,11 +469,9 @@ export function MapNavigator({
         return;
       }
 
-      if (region.spaceSlug) {
-        const space = spaces.find((s) => s.slug === region.spaceSlug);
-        if (space) {
-          onRoomSelect(space, region);
-        }
+      const space = resolveSpaceForRegion(region, spaces);
+      if (space?.isActive) {
+        onRoomSelect(space, region);
       }
     },
     [
@@ -412,16 +487,45 @@ export function MapNavigator({
     ],
   );
 
+  const handleFloorUp = useCallback(() => {
+    if (drill || exitDrill) return;
+    const mapId = stackRef.current[stackRef.current.length - 1] ?? ROOT_MAP_ID;
+    const level = getMapLevel(mapId);
+    const max = getMapFloorCount(level) - 1;
+    if (floorIndexRef.current >= max) return;
+    onRoomDeselect?.();
+    const next = floorIndexRef.current + 1;
+    floorIndexRef.current = next;
+    setFloorIndex(next);
+  }, [drill, exitDrill, onRoomDeselect]);
+
+  const handleFloorDown = useCallback(() => {
+    if (drill || exitDrill) return;
+    if (floorIndexRef.current <= 0) return;
+    onRoomDeselect?.();
+    const next = floorIndexRef.current - 1;
+    floorIndexRef.current = next;
+    setFloorIndex(next);
+  }, [drill, exitDrill, onRoomDeselect]);
+
   const handleBack = useCallback(() => {
     if (drill || exitDrill || buildingEditMode) return;
 
     const currentId = stack[stack.length - 1];
     const selectedSlug = selectedSpaceSlugRef.current;
     const roomMatch = selectedSlug
-      ? findRegionBySpaceSlug(selectedSlug)
+      ? findRegionBySpaceSlug(selectedSlug, currentId)
       : undefined;
 
     if (roomMatch?.mapId === currentId) {
+      const shortcut = findCampusShortcutForFocus(
+        currentId,
+        roomMatch.region.id,
+      );
+      if (shortcut) {
+        startExitDrill(shortcut, currentId);
+        return;
+      }
       onRoomDeselect?.();
       return;
     }
@@ -457,7 +561,7 @@ export function MapNavigator({
       const currentId = stack[stack.length - 1];
       const selectedSlug = selectedSpaceSlugRef.current;
       const roomMatch = selectedSlug
-        ? findRegionBySpaceSlug(selectedSlug)
+        ? findRegionBySpaceSlug(selectedSlug, currentId)
         : undefined;
       const roomOnFloor =
         roomMatch?.mapId === currentId ? roomMatch : undefined;
@@ -469,6 +573,17 @@ export function MapNavigator({
       if (roomOnFloor && index === mapCrumbCount - 1) {
         onRoomDeselect?.();
         return;
+      }
+
+      if (roomOnFloor && index === 0) {
+        const shortcut = findCampusShortcutForFocus(
+          currentId,
+          roomOnFloor.region.id,
+        );
+        if (shortcut) {
+          startExitDrill(shortcut, currentId);
+          return;
+        }
       }
 
       if (roomOnFloor && index < mapCrumbCount - 1) {
@@ -505,6 +620,8 @@ export function MapNavigator({
     const actions = {
       onBack: handleBack,
       onNavigateToIndex: handleNavigateToIndex,
+      onFloorUp: handleFloorUp,
+      onFloorDown: handleFloorDown,
     };
     navigationActionsRef.current = actions;
 
@@ -513,7 +630,13 @@ export function MapNavigator({
         navigationActionsRef.current = null;
       }
     };
-  }, [navigationActionsRef, handleBack, handleNavigateToIndex]);
+  }, [
+    navigationActionsRef,
+    handleBack,
+    handleNavigateToIndex,
+    handleFloorUp,
+    handleFloorDown,
+  ]);
 
   useEffect(() => {
     if (!isCampusView && !drill && !exitDrill) {
@@ -529,6 +652,7 @@ export function MapNavigator({
     buildingEditMode,
     isCampusView,
     transitionT,
+    floorIndex,
   ]);
 
   if (!currentLevel) {
@@ -551,6 +675,13 @@ export function MapNavigator({
   const campusHoldRegion =
     isOnCampusChildFloor && !drill && !exitDrill ? campusRegionForFloor : null;
 
+  const floorLevel =
+    drillChildLevel ??
+    exitFloorLevel ??
+    (isOnCampusChildFloor ? currentLevel : undefined);
+  const floorDrillRegion =
+    drill?.region ?? exitDrill?.region ?? campusRegionForFloor ?? null;
+
   const floorCrossfadeOpacity =
     drill || exitDrill
       ? getDrillCrossfadeOpacity(transitionT)
@@ -572,6 +703,9 @@ export function MapNavigator({
       : null;
 
   const isMapTransitioning = Boolean(drill || exitDrill);
+  const floorDrillCameraT = isMapTransitioning
+    ? computeFloorScaleProgress(transitionT, exitDrill ? "out" : "in")
+    : null;
 
   const mapContent = (
     <>
@@ -597,6 +731,7 @@ export function MapNavigator({
               level={campusLevel}
               regions={campusLevel.regions}
               getRegionStatus={getRegionStatus}
+              isRegionActive={isRegionActive}
               onRegionClick={handleRegionClick}
               variant="campus"
               className="h-full"
@@ -607,71 +742,27 @@ export function MapNavigator({
               onDrillCameraChange={handleDrillCameraChange}
             />
           </div>
-          {isOnCampusChildFloor && currentLevel && !exitDrill && !drill ? (
-            <div
-              className={cn(
-                "absolute inset-0 z-10",
-                !isMapTransitioning &&
-                  "transition-opacity duration-300 ease-out motion-reduce:transition-none",
-              )}
-              style={{ opacity: floorCrossfadeOpacity }}
-            >
-              <InteractiveMapCanvas
-                level={currentLevel}
-                regions={currentLevel.regions}
-                getRegionStatus={getRegionStatus}
-                onRegionClick={handleRegionClick}
-                variant="floor"
-                fullBleed
-                className="h-full"
-                selectedRegionId={selectedRegionId}
-              />
-            </div>
-          ) : null}
-          {drill && drillChildLevel ? (
+          {floorLevel && floorDrillRegion ? (
             <BuildingDrillFrame
-              region={drill.region}
-              expansion={transitionT}
-              direction="in"
-              syncCamera={drillSyncCamera}
-              drillStartCamera={drillStartCamera}
+              region={floorDrillRegion}
+              expansion={isMapTransitioning ? transitionT : 1}
+              direction={exitDrill ? "out" : "in"}
+              syncCamera={isMapTransitioning ? drillSyncCamera : null}
+              drillStartCamera={isMapTransitioning ? drillStartCamera : null}
             >
-              <InteractiveMapCanvas
-                level={drillChildLevel}
-                regions={drillChildLevel.regions}
+              <BuildingFloorStack
+                level={floorLevel}
+                floorIndex={floorIndex}
                 getRegionStatus={getRegionStatus}
+                isRegionActive={isRegionActive}
                 onRegionClick={handleRegionClick}
-                variant="floor"
-                fullBleed
+                drillProgress={floorDrillCameraT}
                 className="h-full"
                 selectedRegionId={
-                  selectedRegionMatch?.mapId === drillChildLevel.id
+                  drill?.region.focusRegionId ??
+                  (selectedRegionMatch?.mapId === floorLevel.id
                     ? selectedRegionMatch.region.id
-                    : null
-                }
-              />
-            </BuildingDrillFrame>
-          ) : null}
-          {exitDrill && exitFloorLevel ? (
-            <BuildingDrillFrame
-              region={exitDrill.region}
-              expansion={transitionT}
-              direction="out"
-              syncCamera={drillSyncCamera}
-              drillStartCamera={drillStartCamera}
-            >
-              <InteractiveMapCanvas
-                level={exitFloorLevel}
-                regions={exitFloorLevel.regions}
-                getRegionStatus={getRegionStatus}
-                onRegionClick={handleRegionClick}
-                variant="floor"
-                fullBleed
-                className="h-full"
-                selectedRegionId={
-                  selectedRegionMatch?.mapId === exitFloorLevel.id
-                    ? selectedRegionMatch.region.id
-                    : null
+                    : null)
                 }
               />
             </BuildingDrillFrame>
@@ -682,6 +773,7 @@ export function MapNavigator({
           level={currentLevel}
           regions={currentLevel.regions}
           getRegionStatus={getRegionStatus}
+          isRegionActive={isRegionActive}
           onRegionClick={handleRegionClick}
           variant={isCampusView ? "campus" : "floor"}
           fullBleed={!isCampusView}

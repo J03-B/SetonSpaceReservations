@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { MapLevel, MapRegion } from "@/lib/map/map-config";
 import type { PublicStatus } from "@/lib/domain/statuses";
 import {
@@ -9,22 +16,29 @@ import {
 } from "@/lib/map/status-colors";
 import { clientToPercent, computeObjectContainFit } from "@/lib/map/editor-utils";
 import {
+  camerasNearlyEqual,
+  computeFloorOverviewCamera,
   computeFloorRoomCamera,
   easeInOutCubic,
   easeOutCubic,
   FLOOR_ROOM_FOCUS_MS,
   FLOOR_ROOM_REST_CAMERA,
   FLOOR_ROOM_SWITCH_MS,
+  FLOOR_ROOM_ZOOM_OUT_MS,
   floorRoomCameraToStyle,
   lerpFloorRoomCamera,
   type FloorRoomCamera,
 } from "@/lib/map/floor-room-camera";
-import { MAP_FLOOR_INSET } from "@/components/map/map-chrome-motion";
+import {
+  MAP_FLOOR_INSET,
+  mapSelectedRoomInsets,
+} from "@/components/map/map-chrome-motion";
 import { CampusMapViewport } from "./campus-map-viewport";
 import {
   MapRegionLabelLayer,
   MapRegionRectButton,
   MapRegionSvgLayer,
+  INACTIVE_REGION_COLORS,
   resolveRegionColors,
 } from "./map-region-overlay";
 import { regionHasPolygon } from "@/lib/map/region-geometry";
@@ -43,6 +57,7 @@ interface InteractiveMapCanvasProps {
   level: MapLevel;
   regions: MapRegion[];
   getRegionStatus?: (region: MapRegion) => PublicStatus | null;
+  isRegionActive?: (region: MapRegion) => boolean;
   onRegionClick?: (region: MapRegion) => void;
   onMapClick?: (percent: { x: number; y: number }) => void;
   editMode?: boolean;
@@ -53,9 +68,15 @@ interface InteractiveMapCanvasProps {
   fullBleed?: boolean;
   drillRegion?: MapRegion | null;
   drillOutRegion?: MapRegion | null;
+  /**
+   * 0 = centered rest pose (tiny map on the building), 1 = chrome-opening pose.
+   * Already eased to match the drill-frame scale. Null when not drilling.
+   */
   drillProgress?: number | null;
   campusHoldRegion?: MapRegion | null;
   onDrillCameraChange?: (camera: DrillCameraState) => void;
+  /** Offset the floor plan into the opening beside the time-range column. */
+  fitToChrome?: boolean;
   className?: string;
 }
 
@@ -63,6 +84,7 @@ export function InteractiveMapCanvas({
   level,
   regions,
   getRegionStatus,
+  isRegionActive,
   onRegionClick,
   onMapClick,
   editMode = false,
@@ -76,6 +98,7 @@ export function InteractiveMapCanvas({
   drillProgress = null,
   campusHoldRegion = null,
   onDrillCameraChange,
+  fitToChrome = false,
   className,
 }: InteractiveMapCanvasProps) {
   const isMobileMapMode = useMobileMapMode();
@@ -91,6 +114,8 @@ export function InteractiveMapCanvas({
   const cameraRef = useRef<FloorRoomCamera>(FLOOR_ROOM_REST_CAMERA);
   const [camera, setCamera] = useState<FloorRoomCamera>(FLOOR_ROOM_REST_CAMERA);
   const animRafRef = useRef<number | null>(null);
+  const wasDrillingRef = useRef(false);
+  const cameraTargetKeyRef = useRef<string | null>(null);
 
   const selectedRegion = useMemo(
     () => regions.find((region) => region.id === selectedRegionId) ?? null,
@@ -98,6 +123,63 @@ export function InteractiveMapCanvas({
   );
 
   const dimsKey = `${fit.fitW}x${fit.fitH}x${containerSize.w}x${containerSize.h}`;
+
+  const chromeInsets = useMemo(
+    () => mapSelectedRoomInsets(containerSize.w),
+    [containerSize.w],
+  );
+
+  const overviewCamera = useMemo(() => {
+    if (!isFloor || fit.fitW <= 0 || containerSize.w <= 0) {
+      return FLOOR_ROOM_REST_CAMERA;
+    }
+    return computeFloorOverviewCamera(
+      fit.fitW,
+      fit.fitH,
+      containerSize.w,
+      containerSize.h,
+      chromeInsets,
+    );
+  }, [
+    isFloor,
+    fit.fitW,
+    fit.fitH,
+    containerSize.w,
+    containerSize.h,
+    chromeInsets,
+  ]);
+
+  const drillCamera = useMemo(() => {
+    if (!isFloor || drillProgress == null) return null;
+    const end = selectedRegion
+      ? computeFloorRoomCamera(
+          selectedRegion,
+          fit.fitW,
+          fit.fitH,
+          containerSize.w,
+          containerSize.h,
+          chromeInsets,
+        )
+      : fitToChrome
+        ? overviewCamera
+        : FLOOR_ROOM_REST_CAMERA;
+    return lerpFloorRoomCamera(
+      FLOOR_ROOM_REST_CAMERA,
+      end,
+      Math.min(1, Math.max(0, drillProgress)),
+    );
+  }, [
+    isFloor,
+    drillProgress,
+    selectedRegion,
+    fit.fitW,
+    fit.fitH,
+    containerSize.w,
+    containerSize.h,
+    chromeInsets,
+    fitToChrome,
+    overviewCamera,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -116,7 +198,17 @@ export function InteractiveMapCanvas({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (drillCamera) {
+      if (animRafRef.current != null) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = null;
+      }
+      cameraRef.current = drillCamera;
+      wasDrillingRef.current = true;
+      return;
+    }
+
     if (!isFloor || fit.fitW <= 0 || containerSize.w <= 0) return;
 
     const toCamera = selectedRegion
@@ -126,21 +218,53 @@ export function InteractiveMapCanvas({
           fit.fitH,
           containerSize.w,
           containerSize.h,
+          chromeInsets,
         )
-      : FLOOR_ROOM_REST_CAMERA;
+      : fitToChrome
+        ? overviewCamera
+        : FLOOR_ROOM_REST_CAMERA;
 
     const fromCamera = cameraRef.current;
-    const fromZoomed = fromCamera.scale > 1.04;
-    const toZoomed = toCamera.scale > 1.04;
-    const isRoomSwitch = fromZoomed && toZoomed && Boolean(selectedRegionId);
+    const handedOffFromDrill = wasDrillingRef.current;
+    wasDrillingRef.current = false;
+
+    const targetKey = selectedRegionId ?? "__overview__";
+    const isFirstPose = cameraTargetKeyRef.current === null;
+    const isTargetChange = cameraTargetKeyRef.current !== targetKey;
+    cameraTargetKeyRef.current = targetKey;
+
+    if (
+      isFirstPose ||
+      handedOffFromDrill ||
+      !isTargetChange ||
+      camerasNearlyEqual(fromCamera, toCamera)
+    ) {
+      if (animRafRef.current != null) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = null;
+      }
+      cameraRef.current = toCamera;
+      setCamera(toCamera);
+      return;
+    }
+
+    const overviewOrRest = fitToChrome ? overviewCamera : FLOOR_ROOM_REST_CAMERA;
+    const fromOverview = camerasNearlyEqual(fromCamera, overviewOrRest);
+    const isRoomSwitch = Boolean(selectedRegion) && !fromOverview;
+    const isZoomOut = !selectedRegion;
     const duration = isRoomSwitch
       ? FLOOR_ROOM_SWITCH_MS
-      : FLOOR_ROOM_FOCUS_MS;
-    const ease = isRoomSwitch ? easeInOutCubic : easeOutCubic;
+      : isZoomOut
+        ? FLOOR_ROOM_ZOOM_OUT_MS
+        : FLOOR_ROOM_FOCUS_MS;
+    const ease =
+      isRoomSwitch || isZoomOut ? easeInOutCubic : easeOutCubic;
 
     if (animRafRef.current != null) {
       cancelAnimationFrame(animRafRef.current);
     }
+
+    setCamera(fromCamera);
 
     const startTime = performance.now();
 
@@ -170,6 +294,7 @@ export function InteractiveMapCanvas({
       }
     };
   }, [
+    drillCamera,
     isFloor,
     selectedRegionId,
     selectedRegion,
@@ -178,12 +303,15 @@ export function InteractiveMapCanvas({
     fit.fitH,
     containerSize.w,
     containerSize.h,
+    fitToChrome,
+    chromeInsets,
+    overviewCamera,
   ]);
 
   const floorFocusStyle = useMemo(() => {
     if (!isFloor) return undefined;
-    return floorRoomCameraToStyle(camera);
-  }, [isFloor, camera]);
+    return floorRoomCameraToStyle(drillCamera ?? camera);
+  }, [isFloor, drillCamera, camera]);
 
   const refreshFit = useCallback(() => {
     const container = containerRef.current;
@@ -229,6 +357,7 @@ export function InteractiveMapCanvas({
         level={level}
         regions={regions}
         getRegionStatus={getRegionStatus}
+        isRegionActive={isRegionActive}
         onRegionClick={onRegionClick}
         drillRegion={drillRegion}
         drillOutRegion={drillOutRegion}
@@ -247,6 +376,7 @@ export function InteractiveMapCanvas({
           <MapRegionSvgLayer
             regions={regions}
             mobileMode={isMobileMapMode}
+            isRegionActive={isRegionActive}
             getColors={(region) =>
               resolveRegionColors(
                 region,
@@ -264,6 +394,7 @@ export function InteractiveMapCanvas({
             hoveredRegionId={isFloor ? hoveredRegionId : null}
             selectedRegionId={isFloor ? selectedRegionId : null}
             floorLabels={isFloor}
+            isRegionActive={isRegionActive}
             getSublabel={
               isFloor
                 ? undefined
@@ -288,16 +419,20 @@ export function InteractiveMapCanvas({
                 status ?? null,
                 isFloor ? "floor" : "default",
               );
+              const regionActive = isRegionActive?.(region) ?? true;
               const isSelected = selectedRegionId === region.id;
 
               return (
                 <MapRegionRectButton
                   key={region.id}
                   region={region}
-                  colors={colors}
+                  colors={regionActive ? colors : INACTIVE_REGION_COLORS}
                   variant={isFloor ? "floor" : "default"}
                   selected={isSelected}
-                  onClick={() => onRegionClick?.(region)}
+                  interactive={regionActive}
+                  onClick={
+                    regionActive ? () => onRegionClick?.(region) : undefined
+                  }
                   sublabel={
                     isFloor
                       ? undefined

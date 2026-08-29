@@ -29,8 +29,19 @@
   --status-closed-bg: #f3f4f6;
   --status-success: #1a7f4b;
   --status-warning: #9a6700;
+  --status-warning-bg: #f5d76e;
   --status-danger: #b42318;
   --status-neutral: #5c6678;
+  --role-admin: #7a5200;
+  --role-admin-bg: #f5d76e;
+  --role-manager: #1e4d8c;
+  --role-manager-bg: #e8eef7;
+  --role-guest: #1a7f4b;
+  --role-guest-bg: #e8f5ee;
+  --role-user: #1a2332;
+  --role-user-bg: #e6e8ed;
+  --role-trusted: #ffffff;
+  --role-trusted-bg: #4a5160;
 }
 
 @theme inline {
@@ -58,6 +69,18 @@
   --color-status-closed-bg: var(--status-closed-bg);
   --color-status-danger: var(--status-danger);
   --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-role-admin: var(--role-admin);
+  --color-role-admin-bg: var(--role-admin-bg);
+  --color-role-manager: var(--role-manager);
+  --color-role-manager-bg: var(--role-manager-bg);
+  --color-role-guest: var(--role-guest);
+  --color-role-guest-bg: var(--role-guest-bg);
+  --color-role-user: var(--role-user);
+  --color-role-user-bg: var(--role-user-bg);
+  --color-role-trusted: var(--role-trusted);
+  --color-role-trusted-bg: var(--role-trusted-bg);
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -76,6 +99,12 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation: none !important;
   }
 }
 
@@ -105,6 +134,78 @@ body {
 .map-enter-back {
   opacity: 0;
   transform: scale(0.97) translateX(-2%);
+}
+
+/* Immediate fade-out on in-app navigation (Help / Account / Sign in X) */
+.route-fade-root.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Crossfade between map and Account / Help / Manage */
+.site-header {
+  view-transition-name: site-header;
+}
+
+.page-main {
+  view-transition-name: page-main;
+}
+
+.developer-watermark {
+  view-transition-name: developer-watermark;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(site-header),
+::view-transition-group(developer-watermark) {
+  animation: none;
+  z-index: 200;
+}
+
+::view-transition-old(site-header),
+::view-transition-old(developer-watermark) {
+  display: none;
+}
+
+::view-transition-new(site-header),
+::view-transition-new(developer-watermark) {
+  animation: none;
+}
+
+::view-transition-image-pair(page-main) {
+  isolation: isolate;
+}
+
+::view-transition-old(page-main),
+::view-transition-new(page-main) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  overflow: clip;
+}
+
+/* Map (or next page) stays fully visible; the leaving page dissolves over it. */
+::view-transition-new(page-main) {
+  animation: none;
+}
+
+::view-transition-old(page-main) {
+  z-index: 1;
+  animation: route-crossfade-out 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes route-crossfade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .map-exit-forward {
@@ -138,7 +239,6 @@ body {
 }
 
 .planner-drag-handle {
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
@@ -184,27 +284,34 @@ body {
   display: none;
 }
 
+.room-timeline-day-header {
+  padding-right: 0.5rem;
+}
+
 .room-timeline-scroll {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--border-strong) 72%, var(--surface)) transparent;
+  scrollbar-color: var(--border-strong) var(--surface);
+  scrollbar-gutter: stable;
 }
 
 .room-timeline-scroll::-webkit-scrollbar {
   width: 0.5rem;
+  height: 0.5rem;
 }
 
 .room-timeline-scroll::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--surface);
+  border-radius: 9999px;
 }
 
 .room-timeline-scroll::-webkit-scrollbar-thumb {
-  border: 2px solid var(--surface-subtle);
+  border: 2px solid var(--surface);
   border-radius: 9999px;
-  background: color-mix(in srgb, var(--border-strong) 72%, var(--surface));
+  background: var(--border-strong);
 }
 
 .room-timeline-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--action-primary) 38%, var(--border-strong));
+  background: var(--text-secondary);
 }
 
 .planner-time-wheel-mask {
@@ -284,6 +391,106 @@ body {
   }
 }
 
+@keyframes sign-in-continue-error {
+  from {
+    background-color: var(--action-primary);
+    color: var(--text-inverse);
+    opacity: 1;
+  }
+
+  to {
+    background-color: var(--status-danger);
+    color: transparent;
+    opacity: 0.25;
+  }
+}
+
+@keyframes sign-in-continue-error-text {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sign-in-continue-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.sign-in-continue--error {
+  animation: sign-in-continue-error 0.75s ease forwards;
+}
+
+.sign-in-continue--enter {
+  animation: sign-in-continue-in 0.35s ease;
+}
+
+.sign-in-continue-error-text {
+  animation: sign-in-continue-error-text 0.75s ease both;
+}
+
+@keyframes watermark-coffee-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, #16a34a 55%, transparent),
+      0 6px 18px color-mix(in srgb, #16a34a 38%, transparent);
+  }
+
+  50% {
+    transform: scale(1.06);
+    box-shadow:
+      0 0 0 14px transparent,
+      0 10px 26px color-mix(in srgb, #16a34a 48%, transparent);
+  }
+}
+
+@keyframes watermark-donate-icon-sway {
+  0%,
+  100% {
+    transform: rotate(-15deg);
+  }
+
+  50% {
+    transform: rotate(15deg);
+  }
+}
+
+.watermark-coffee-pulse {
+  background: var(--action-primary);
+  box-shadow: 0 6px 18px color-mix(in srgb, #16a34a 38%, transparent);
+}
+
+.watermark-credit-open .watermark-coffee-pulse {
+  animation: watermark-coffee-pulse 2.8s ease-in-out infinite;
+}
+
+.watermark-credit-open .watermark-coffee-pulse svg {
+  animation: watermark-donate-icon-sway 3.4s ease-in-out infinite;
+}
+
+.watermark-credit-open .watermark-coffee-pulse:hover,
+.watermark-credit-open .watermark-coffee-pulse:focus-visible {
+  animation: none;
+  transform: scale(1.06);
+  background: var(--action-primary-hover);
+}
+
+.watermark-credit-open .watermark-coffee-pulse:hover svg,
+.watermark-credit-open .watermark-coffee-pulse:focus-visible svg {
+  animation: none;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .planner-days-shift-forward,
   .planner-days-shift-back,
@@ -305,5 +512,30 @@ body {
   .campus-map-glide {
     transition: none !important;
     transform: scale(1) !important;
+  }
+
+  .sign-in-continue--error {
+    animation: none;
+    background-color: var(--status-danger);
+    color: transparent;
+    opacity: 0.25;
+  }
+
+  .sign-in-continue--enter {
+    animation: none;
+  }
+
+  .sign-in-continue-error-text {
+    animation: none;
+  }
+
+  .watermark-coffee-pulse {
+    animation: none;
+    box-shadow: none;
+  }
+
+  .watermark-coffee-pulse svg {
+    animation: none;
+    transform: none;
   }
 }

@@ -25,12 +25,7 @@ export function SpaceCard({ space }: SpaceCardProps) {
               {space.capacity} people
             </dd>
           </div>
-        ) : (
-          <div>
-            <dt className="text-text-secondary">Capacity</dt>
-            <dd className="font-medium text-text-primary">To be confirmed</dd>
-          </div>
-        )}
+        ) : null}
         <div>
           <dt className="text-text-secondary">Time zone</dt>
           <dd className="font-medium text-text-primary">Eastern Time</dd>

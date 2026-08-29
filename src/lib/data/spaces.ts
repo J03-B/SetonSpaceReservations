@@ -1,6 +1,7 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { PublicSpace } from "@/lib/domain/types";
 import { campusToPublicSpaces } from "@/lib/data/campus-data";
+import { DEFAULT_TIMEZONE, type RoomCurrentStatus } from "@/lib/domain/statuses";
 
 function mapSpace(row: Record<string, unknown>): PublicSpace {
   return {
@@ -10,11 +11,10 @@ function mapSpace(row: Record<string, unknown>): PublicSpace {
     slug: row.slug as string,
     description: (row.description as string | null) ?? null,
     building: (row.building as string | null) ?? null,
-    capacity: (row.capacity as number | null) ?? null,
-    timezone: row.timezone as string,
-    publicRules: (row.public_rules as string | null) ?? null,
-    status: row.status as "active" | "archived",
-    isPublic: row.is_public as boolean,
+    capacity: null,
+    timezone: DEFAULT_TIMEZONE,
+    currentStatus: row.current_status as RoomCurrentStatus,
+    isActive: row.is_active as boolean,
   };
 }
 
@@ -25,42 +25,22 @@ export async function getPublicSpaces(): Promise<PublicSpace[]> {
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("spaces")
+    .from("rooms")
     .select(
-      "id, name, short_name, slug, description, building, capacity, timezone, public_rules, status, is_public",
+      "id, name, short_name, slug, description, building, current_status, is_active",
     )
-    .eq("status", "active")
-    .eq("is_public", true)
     .order("name");
 
-  if (error || !data?.length) {
-    return campusToPublicSpaces();
+  if (error) {
+    throw new Error(`Failed to load rooms: ${error.message}`);
   }
 
-  return data.map(mapSpace);
+  return (data ?? []).map(mapSpace);
 }
 
 export async function getPublicSpaceBySlug(
   slug: string,
 ): Promise<PublicSpace | null> {
-  if (!isSupabaseConfigured()) {
-    return campusToPublicSpaces().find((s) => s.slug === slug) ?? null;
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("spaces")
-    .select(
-      "id, name, short_name, slug, description, building, capacity, timezone, public_rules, status, is_public",
-    )
-    .eq("slug", slug)
-    .eq("status", "active")
-    .eq("is_public", true)
-    .maybeSingle();
-
-  if (error || !data) {
-    return campusToPublicSpaces().find((s) => s.slug === slug) ?? null;
-  }
-
-  return mapSpace(data);
+  const spaces = await getPublicSpaces();
+  return spaces.find((space) => space.slug === slug && space.isActive) ?? null;
 }

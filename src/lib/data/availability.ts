@@ -15,7 +15,7 @@ interface AvailabilityQuery {
 export async function getPublicAvailability(
   query: AvailabilityQuery,
 ): Promise<PublicAvailabilitySlot[]> {
-  const spaces = await getPublicSpaces();
+  const spaces = (await getPublicSpaces()).filter((space) => space.isActive);
   const filteredSpaces = query.spaceId
     ? spaces.filter((s) => s.id === query.spaceId)
     : spaces;
@@ -36,7 +36,7 @@ export async function getPublicAvailability(
   }
 
   const { data, error } = await supabase.rpc("get_public_availability", {
-    p_space_ids: spaceIds,
+    p_room_ids: spaceIds,
     p_start_at: query.start.toISOString(),
     p_end_at: query.end.toISOString(),
   });
@@ -58,7 +58,7 @@ export async function getPublicAvailability(
     publicStatus: row.public_status as PublicStatus,
     activityCategory: normalizeActivityCategory(row.activity_category),
     requestUpdatedAt: (row.request_updated_at as string | null) ?? null,
-    timezone: (row.timezone as string) ?? DEFAULT_TIMEZONE,
+    timezone: DEFAULT_TIMEZONE,
   }));
 }
 

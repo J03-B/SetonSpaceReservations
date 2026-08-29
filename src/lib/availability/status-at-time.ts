@@ -1,5 +1,6 @@
 import type { PublicAvailabilitySlot } from "@/lib/domain/types";
 import type { PublicStatus } from "@/lib/domain/statuses";
+import { parseStoredTimestamp } from "@/lib/availability/format-when";
 
 const STATUS_PRIORITY: Record<PublicStatus, number> = {
   Reserved: 5,
@@ -32,7 +33,7 @@ export function getStatusAtInstant(
   instant: Date,
 ): PublicStatus {
   const matching = slotsForSpace(slots, spaceId).filter((s) =>
-    overlaps(new Date(s.startAt), new Date(s.endAt), instant, instant),
+    overlaps(parseStoredTimestamp(s.startAt), parseStoredTimestamp(s.endAt), instant, instant),
   );
 
   if (matching.length === 0) {
@@ -57,7 +58,7 @@ export function getStatusForRange(
   rangeEnd: Date,
 ): PublicStatus {
   const matching = slotsForSpace(slots, spaceId).filter((s) =>
-    overlaps(new Date(s.startAt), new Date(s.endAt), rangeStart, rangeEnd),
+    overlaps(parseStoredTimestamp(s.startAt), parseStoredTimestamp(s.endAt), rangeStart, rangeEnd),
   );
 
   if (matching.length === 0) {
@@ -78,10 +79,11 @@ export function getFutureBlocksForSpace(
   from: Date,
 ): PublicAvailabilitySlot[] {
   return slotsForSpace(slots, spaceId)
-    .filter((s) => new Date(s.endAt) > from)
+    .filter((s) => parseStoredTimestamp(s.endAt) > from)
     .sort(
       (a, b) =>
-        new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+        parseStoredTimestamp(a.startAt).getTime() -
+        parseStoredTimestamp(b.startAt).getTime(),
     );
 }
 
@@ -98,11 +100,17 @@ export function getBlocksForDay(
 
   return slotsForSpace(slots, spaceId)
     .filter((s) =>
-      overlaps(new Date(s.startAt), new Date(s.endAt), dayStart, dayEnd),
+      overlaps(
+        parseStoredTimestamp(s.startAt),
+        parseStoredTimestamp(s.endAt),
+        dayStart,
+        dayEnd,
+      ),
     )
     .sort(
       (a, b) =>
-        new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+        parseStoredTimestamp(a.startAt).getTime() -
+        parseStoredTimestamp(b.startAt).getTime(),
     );
 }
 

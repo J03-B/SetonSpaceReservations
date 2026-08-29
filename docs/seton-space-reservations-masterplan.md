@@ -136,7 +136,7 @@ These may become later phases.
 The following assumptions resolve ambiguity in the initial requirements. They must be verified before production launch.
 
 1. **Seton email domain:** The initial assumed domain is `setonschool.net`.
-2. **Tech Admin email:** The initial assumed address is `TechAdmin@setonschool.net`.
+2. **Tech Admin email:** Phase 1 bootstrap admin is `semperjoey@gmail.com`. Production Tech Admin remains open decision #3.
 3. **Seton authentication provider:** Seton may use Google Workspace or Microsoft Entra ID. The final identity provider must be confirmed before production integration.
 4. **Every reservation requires manager approval:** Seton users are automatically approved to submit requests, not automatically approved to reserve spaces.
 5. **Public calendar privacy:** Public users see status blocks, not private requester or event information.
@@ -420,13 +420,18 @@ Each space must have a configurable record.
 
 ### 10.3 Initial spaces
 
-#### DMC
+#### DMC (Divine Mercy Center)
 
-The exact expansion of the acronym must be confirmed. Until then:
+Owner confirmed the expansion as Divine Mercy Center. Reservable rooms:
 
-- Use display name `DMC`.
-- Do not invent a longer name.
-- Configure manager assignment, capacity, hours, and rules before launch.
+- Classroom
+- Common Space
+
+The campus map drills into the Divine Mercy Center floor plan. The former whole-building catalog row `dmc` is inactive.
+
+#### Carlo Acutis Tech Center
+
+One reservable room: VEX Space. The campus map drills into the Carlo Acutis floor plan and selects that room. The former whole-building catalog row `catc` is inactive.
 
 #### Faustina Hall
 
@@ -609,6 +614,7 @@ Show only when relevant:
 - Blocks the requested time plus buffers.
 - Sends approval confirmation.
 - Records approver, date, and any conditions.
+- A manager may undo approval. That removes the occupancy lock and returns the request to Submitted (pending in the Requests queue).
 
 #### Declined
 
@@ -650,7 +656,7 @@ Show only when relevant:
 | Under Review | Changes Requested, Approved, Declined, Cancelled by Requester |
 | Changes Requested | Resubmitted, Cancelled by Requester, Expired |
 | Resubmitted | Under Review, Changes Requested, Approved, Declined, Cancelled by Requester |
-| Approved | Cancelled by Requester, Cancelled by Manager, Completed |
+| Approved | Submitted (manager undo), Cancelled by Requester, Cancelled by Manager, Completed |
 | Declined | Terminal |
 | Cancelled by Requester | Terminal |
 | Cancelled by Manager | Terminal |
@@ -685,6 +691,7 @@ A manager may:
 - Reassign to another authorized manager
 - Escalate to Tech Admin
 - Cancel an approved reservation when authorized
+- Undo an approval, returning the request to the Requests queue
 
 ### 14.3 Decision requirements
 
@@ -977,7 +984,16 @@ Sections:
 
 ## 19. Data Model
 
-The final schema may vary, but the following entities and relationships are required.
+The live Phase 1 schema uses four tables (owner decision 2026-08-28). The fuller entity list in this section remains the long-term target if operational complexity returns.
+
+| Table | Purpose |
+|---|---|
+| `users` | Created on signup. Stores profile data and access level (`none`, `requester`, `manager`, `tech_admin`). |
+| `rooms` | Every reservable room and its public details. |
+| `reservation_requests` | Requests awaiting a decision (who, when, description, status). |
+| `reservations_confirmed` | Approved reservations only (who, when, description, who approved). Overlaps are blocked in the database. |
+
+The final schema may vary, but the following entities and relationships are required for the full product.
 
 ### 19.1 User
 
@@ -1278,7 +1294,7 @@ Audit records are append-only.
 - Return stable error codes.
 - Avoid exposing internal identifiers in public pages when a safer public identifier is available.
 - Validate all date/time inputs on the server.
-- Store timestamps in UTC and render in the space time zone.
+- Store reservation start and end as America/New_York wall-clock times so the data table matches the times people pick. Other timestamps stay timestamptz.
 - Use pagination for list endpoints.
 - Record security-sensitive failures.
 
@@ -1933,7 +1949,7 @@ Do not optimize metrics at the expense of fairness, privacy, or safety.
 | Unclear pending behavior | Confirm hold policy before launch. |
 | Self-approval abuse | Block by default; audited exception only. |
 | Calendar integration drift | Define authoritative system and reconciliation jobs. |
-| Time-zone errors | Store UTC; render space time zone; test DST transitions. |
+| Time-zone errors | Reservation start/end are Eastern wall clock; test DST transitions. |
 | Inaccessible calendar | Provide list view and keyboard/screen-reader testing. |
 | AI agents invent requirements | Require assumptions and decision records. |
 
@@ -1945,11 +1961,11 @@ The following are not fully determined:
 
 1. Official product name
 2. Confirmed Seton email domain
-3. Confirmed Tech Admin email address
+3. Confirmed Tech Admin email address (Phase 1 bootstrap: `semperjoey@gmail.com`)
 4. Identity provider
-5. Exact meaning and official name of DMC
+5. **Exact meaning and official name of DMC — decided 2026-08-29:** Divine Mercy Center, with two reservable rooms: Classroom and Common Space. Carlo Acutis Tech Center is one room: VEX Space. The old whole-building `dmc` and `catc` catalog rows are inactive.
 6. Official name of Gym
-7. Named managers for each space
+7. Named managers for each space — campus-wide manager for Phase 1 is `jbenin@setonschool.net` (D-2026-08-29-manage-abilities, D-2026-08-29-campus-manager-net-only). Per-space assignment UI remains later.
 8. Operating hours by space
 9. Capacities and rules by space
 10. Pending-hold policy and expiration
@@ -1960,11 +1976,338 @@ The following are not fully determined:
 15. Data retention period
 16. Attachment requirements
 17. Public event title visibility, if ever allowed
-18. Support contact and escalation path
+18. **Support contact — decided 2026-08-29:** Phase 1 help page is the Account/Sign in card layout. Contact is `j03-b@setonschool.dev`. Escalation path remains open.
 19. Hosting platform
 20. Pilot space
+21. **Schema scope for Phase 1 — decided 2026-08-28:** four tables (`users`, `rooms`, `reservation_requests`, `reservations_confirmed`). Role tables, domain tables, hours, blackouts, and audit were deferred.
+22. **Phase 1 sign-in method — decided 2026-08-28:** email one-time code until Seton SSO is confirmed. Supabase email OTP is 6 digits (4-digit email OTP is not supported).
+23. **Rooms catalog columns — decided 2026-08-29:** map rooms share one slug with `rooms.slug`. `current_status` is live occupancy: Open, Pending, or Reserved. `is_active` controls whether people can submit reservation requests. Inactive rooms stay visible on the map at half nametag size with no interaction. Room timezone, rules, and created_at were removed; campus timezone remains `America/New_York`.
 
 Agents may implement placeholders only when the placeholder is clearly marked and does not create a security or policy risk.
+
+### Recorded decision: D-2026-08-28-schema
+
+```text
+Decision ID: D-2026-08-28-schema
+Date: 2026-08-28
+Owner: Product owner (chat request)
+Status: Approved
+Context: The initial schema had 12 public tables. That is more than Phase 1 needs.
+Decision: Keep four tables — users, rooms, reservation_requests, reservations_confirmed. Store access level on the user. Block overlapping confirmed reservations in the database. Public calendar still returns status and time only.
+Alternatives Considered: Keep the full masterplan entity list; fold requests and confirmed reservations into one table.
+Security Impact: Access level is stored on users and protected from self-edit. Authorization stays server-side.
+Privacy Impact: Public availability RPC still omits requester and event details.
+Accessibility Impact: None.
+Operational Impact: Hours, backup managers, blackouts, and audit logs are not in the database yet.
+Migration or Rollback: supabase/migrations/20260829030041_simplify_core_tables.sql
+Documents Updated: this master plan, README
+```
+
+### Recorded decision: D-2026-08-28-otp-auth
+
+```text
+Decision ID: D-2026-08-28-otp-auth
+Date: 2026-08-28
+Owner: Product owner (chat request)
+Status: Approved
+Context: Phase 1 sign-in used email and password. The owner asked to sign in with email and a short code, and to simplify the sign-in screen.
+Decision: Use passwordless email OTP for Phase 1. Sign-in collects email, then a code. New accounts also receive a code instead of a password. Seton SSO remains the preferred production method (open decision #4).
+Alternatives Considered: Keep email/password; custom 4-digit codes outside Supabase Auth.
+Security Impact: Authorization stays server-side. Email OTP is 6 digits (Supabase minimum). Magic Link template must include {{ .Token }} so the code is visible in email.
+Privacy Impact: None. Public calendars still show status and time only.
+Accessibility Impact: Sign-in uses a labeled email field and a labeled numeric code field with one-time-code autocomplete.
+Operational Impact: Hosted Magic Link email template must include the OTP. Identity-provider SSO is still deferred.
+Migration or Rollback: App auth actions in src/lib/auth/actions.ts; local template in supabase/templates/magic_link.html.
+Documents Updated: this master plan, README
+```
+
+### Recorded decision: D-2026-08-29-account-groups
+
+```text
+Decision ID: D-2026-08-29-account-groups
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: The account page showed requester-access copy, email verification, account status, organization, and phone. The owner asked for a centered account screen like sign-in, with Access as a group label only.
+Decision: Account page displays Access as User (default), Manager, or Admin. Organization and phone are not on the account form. Sign out lives under Save profile, not in the header. Managers see assigned spaces from rooms.manager_id. Phase 1 bootstrap Admin is semperjoey@gmail.com; Admin assigns managers to spaces or buildings in a later workflow.
+Alternatives Considered: Keep requester-access wording and header Sign out; wait for a manager-assignment table.
+Security Impact: Authorization stays server-side. Bootstrap admin is granted tech_admin in the database and session from the Auth email, not from client-supplied roles. Users still cannot self-edit access_level.
+Privacy Impact: Public calendars still show status and time only.
+Accessibility Impact: Account uses labeled fields and a primary Save action with a quieter Log out control.
+Operational Impact: Manager assignment UI is not built yet. Assigned spaces only appear when rooms.manager_id is set.
+Migration or Rollback: supabase/migrations/20260829054249_bootstrap_admin_email.sql
+Documents Updated: this master plan, README
+```
+
+### Recorded decision: D-2026-08-29-access-labels
+
+```text
+Decision ID: D-2026-08-29-access-labels
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Header order mixed Manage before Help. Access displayed User/Manager/Admin, so new accounts looked like Users. The owner asked for Help leftmost, Manage only for managers, then Account; default access Guest (green); User light blue; Trusted User dark blue after manager approval.
+Decision: Header is Help, then Manage (managers only), then Account or Sign in. Access labels are Guest (default, none), User (requester), Trusted User (trusted, manager-approved), Manager, and Admin. Guests cannot submit reservation requests. Users and Trusted Users can submit; reservation approval stays separate. Seton-domain auto-grant still promotes to User (requester), not Trusted User (open decision #2).
+Alternatives Considered: Keep User as the default label; require Tech Admin (not space managers) to grant trusted access.
+Security Impact: Authorization stays server-side. Users cannot self-edit access_level. Only staff can call approve_trusted_user, which may only raise none or requester to trusted.
+Privacy Impact: Managers can list guest and user emails on Manage to approve trusted access.
+Accessibility Impact: Access badges include text labels, not color alone. Header links keep a 44px minimum target.
+Operational Impact: Manage includes a trusted-access queue. Phase 3 reservation queues are still pending.
+Migration or Rollback: supabase/migrations/20260829070000_add_trusted_access_level.sql, supabase/migrations/20260829070001_trusted_user_approval.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-rooms-columns
+
+```text
+Decision ID: D-2026-08-29-rooms-columns
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Local map rooms were only partly in Supabase, slugs were inconsistent (faustina-hall vs faustina), and rooms stored unused timezone, rules, and created_at columns. is_public did not match the need to show inactive rooms on the map.
+Decision: Every map room has a matching rooms row linked by a single-token slug. Rename status to current_status and is_public to is_active. Drop timezone, rules, and created_at on rooms; keep updated_at. Description is blank and capacity is null until configured. is_active controls whether a room is clickable and reservable. Inactive rooms remain on the map at 50% nametag size with no hover, color, or click. Public select still allows current_status = active so inactive rooms can render.
+Alternatives Considered: Hide inactive rooms; keep per-room timezone; keep faustina-hall.
+Security Impact: Authorization stays server-side. Availability RPC only returns active, is_active rooms.
+Privacy Impact: Public calendar still omits requester and event details.
+Accessibility Impact: Inactive rooms are visible but not keyboard-operable.
+Operational Impact: Room catalog is seeded from the campus map. Turning is_active off leaves the nametag in place.
+Migration or Rollback: supabase/migrations/20260829050000_rooms_catalog_and_is_active.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-room-occupancy-status
+
+```text
+Decision ID: D-2026-08-29-room-occupancy-status
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: current_status was still active/archived after the rooms-column rename. The owner asked for Open, Pending, and Reserved, with is_active as the request gate.
+Decision: rooms.current_status is live occupancy: Open, Pending, or Reserved, refreshed from confirmed reservations and pending requests. is_active is whether people can submit requests. Inactive rooms stay on the map but cannot be selected. Public map labels use Open, Pending, and Reserved (not Taken).
+Alternatives Considered: Keep active/archived lifecycle on current_status; keep Taken as the reserved label.
+Security Impact: Request inserts require rooms.is_active. Authorization stays server-side.
+Privacy Impact: Public calendar still omits requester and event details.
+Accessibility Impact: Legend and badges use the same Open / Pending / Reserved words.
+Operational Impact: Occupancy on the room row is "right now"; the map still colors the selected time window.
+Migration or Rollback: supabase/migrations/20260829080000_room_current_status_open_pending_reserved.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-request-sent
+
+```text
+Decision ID: D-2026-08-29-request-sent
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Request this space sent signed-in users to Account because it opened /sign-in, and middleware sends authenticated users to /account. The confirmed reservations table name did not match reservation_requests.
+Decision: Signed-in requesters submit a pending reservation_requests row for the selected time, the button says Request sent!, and the pending block appears in the room Requests list and the manager Requests panel. Guests stay on the map with an error. Signed-out users return to the map after sign-in. Rename confirmed_reservations to reservations_confirmed.
+Alternatives Considered: Keep routing signed-in users through Account; keep the old table name.
+Security Impact: Inserts stay server-side with RLS. Guests cannot submit. Public views still show status and time only.
+Privacy Impact: The Requests list on the public map shows Pending and time, not requester details.
+Accessibility Impact: The button label changes to Request sent! and errors are announced.
+Operational Impact: Managers see new pending rows on Manage after refresh.
+Migration or Rollback: supabase/migrations/20260829090000_rename_reservations_confirmed.sql; src/lib/auth/reservation-actions.ts
+Documents Updated: this master plan, README
+```
+
+### Recorded decision: D-2026-08-29-request-reason
+
+```text
+Decision ID: D-2026-08-29-request-reason
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: After submit, Request sent! stayed on the button. Requests had no reason. The time picker showed 3:00 AM while the stored time kept seconds from now (3:03). Manage cards did not lead with the room or requester identity.
+Decision: When the selected time is pending, hide Request this space and show a Pending status. Signed-in requesters enter a required Reason stored in reservation_requests.description. Title is the room name. Manage request cards show room, requester name, and requester email, then when and why. Request times snap to the start and end fields (30-minute picker slots, no leftover seconds). Public map still shows status and time only.
+Alternatives Considered: Keep Request sent!; keep exact clock seconds; make reason optional.
+Security Impact: Inserts stay server-side. Description is not shown on public calendar.
+Privacy Impact: Requester name and email appear only on Manage, not on the public map.
+Accessibility Impact: An empty reason keeps Request this space faded. Pending replaces the button with a status.
+Operational Impact: Managers see why the space is needed on each request card.
+Migration or Rollback: none
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-request-reason-inline
+
+```text
+Decision ID: D-2026-08-29-request-reason-inline
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Superseded
+Context: Combined the reason field into the blue Request this space control.
+Decision: Rejected. Restore the previous Reason label and text box. The helper line belongs on the button, not in the field.
+Alternatives Considered: Keep the combined control.
+Security Impact: None.
+Privacy Impact: None.
+Accessibility Impact: None.
+Operational Impact: None.
+Migration or Rollback: none
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-request-reason-button-copy
+
+```text
+Decision ID: D-2026-08-29-request-reason-button-copy
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: A separate “Please provide a reason for the space.” line sat above Request this space. The owner wanted fewer lines, but the Reason field style to stay as it was.
+Decision: Keep the Reason label and text box. Do not show the extra helper line. When the reason is empty, the faded button reads “Please provide a reason for the space.” When the requester types, that label fades out, “Request this space” fades in, and the button color fades back. Reason is still required. Public map still shows status and time only.
+Alternatives Considered: Put the reason field inside the blue button (superseded).
+Security Impact: None. Description is still required server-side.
+Privacy Impact: None.
+Accessibility Impact: The button name changes with the visible label. An empty reason still disables submit.
+Operational Impact: None.
+Migration or Rollback: none
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-eastern-wall-clock
+
+```text
+Decision ID: D-2026-08-29-eastern-wall-clock
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Booking 2:00 AM–3:00 AM stored 6:00 AM–7:00 AM in start_at/end_at because timestamptz was shown as UTC.
+Decision: reservation_requests and reservations_confirmed start_at/end_at are timestamp without time zone in America/New_York. The table shows the same clock time the requester picked. Occupancy and availability convert now() and query bounds into Eastern before comparing. Public views still show status and time only.
+Alternatives Considered: Keep timestamptz UTC in the table and only convert in the UI.
+Security Impact: None. Authorization stays server-side.
+Privacy Impact: None.
+Accessibility Impact: Manage When omits a time-zone label. Different days show both dates.
+Operational Impact: Existing UTC rows were converted to Eastern wall clock.
+Migration or Rollback: supabase/migrations/20260829100000_eastern_wall_clock_times.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-dmc-catc-rooms
+
+```text
+Decision ID: D-2026-08-29-dmc-catc-rooms
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: The campus map treated DMC and CATC as single whole-building spaces. The owner added interior floor plans and named the rooms.
+Decision: DMC is Divine Mercy Center with Classroom and Common Space. Carlo Acutis Tech Center has one room, VEX Space. Campus clicks drill into those floor plans the same way as Corpus Christi. Old `dmc` and `catc` room rows are inactive.
+Alternatives Considered: Keep one bookable space per building; wait for traced polygons before going live.
+Security Impact: Authorization stays server-side. Inactive whole-building rows cannot receive new requests.
+Privacy Impact: Public calendar still shows status and time only.
+Accessibility Impact: Room labels use the owner-supplied names.
+Operational Impact: Room outlines can be refined in the building editors. Manager assignment, hours, and capacity are still open.
+Migration or Rollback: supabase/migrations/20260829081000_dmc_catc_rooms.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-manage-abilities
+
+```text
+Decision ID: D-2026-08-29-manage-abilities
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Manage was a placeholder plus trusted-access queue. The owner asked for Admin and Manager abilities as columns, icon header items, building-routed requests, a campus-wide manager, and an admin temporary view of other accounts.
+Decision: Manage is visible only to managers and admins. Admins see Admin columns (room layouts, temporary view, trusted access) plus Manager columns (requests, current reservations). Managers see Manager columns only. Header Help, Manage, and Account are icons with accessible names. Reservation requests are visible to the room’s manager (rooms.manager_id) and to Tech Admin. jbenin@setonschool.net is campus manager for every building on first verified sign-in and always appears in Temporary view. Temporary view is admin-only, stored in an httpOnly cookie, keeps the admin session, and is disabled from Account. Mutations are blocked while temporary view is on. Trusted User approval is an Admin ability.
+Alternatives Considered: Actually sign in as the target user; keep request visibility for all staff via is_staff().
+Security Impact: Authorization stays server-side. Temporary view requires a real Tech Admin session on every request. The admin session is not replaced. Managers cannot see other buildings’ private request details.
+Privacy Impact: Public calendar still shows status and time only. Manager columns show requester identity for assigned buildings only.
+Accessibility Impact: Header icons include sr-only names and 44px targets. Temporary view is announced in a status banner.
+Operational Impact: jbenin@setonschool.net is not in the user table until that person signs in; assignment runs then. Per-building manager UI is still later.
+Migration or Rollback: supabase/migrations/20260829063946_campus_manager_and_request_routing.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-campus-manager-dev
+
+```text
+Decision ID: D-2026-08-29-campus-manager-dev
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Superseded by D-2026-08-29-campus-manager-net-only
+Context: Campus-wide manager was only jbenin@setonschool.net. The owner asked for jbenin@setonschool.dev to manage every building on signup.
+Decision: jbenin@setonschool.dev and jbenin@setonschool.net are both campus managers. On verified signup, that account is Manager and rooms.manager_id is set for every room. Temporary view lists both addresses until they exist.
+Alternatives Considered: Replace .net with .dev; wait for a per-building manager table.
+Security Impact: Authorization stays server-side. Only those emails receive campus-wide manager assignment.
+Privacy Impact: None.
+Accessibility Impact: None.
+Operational Impact: If both accounts sign in, the later verified signup is assigned to every room.
+Migration or Rollback: supabase/migrations/20260829110000_campus_manager_setonschool_dev.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-campus-manager-net-only
+
+```text
+Decision ID: D-2026-08-29-campus-manager-net-only
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: The previous decision added jbenin@setonschool.dev as a campus manager. The owner clarified that only jbenin@setonschool.net should be campus-wide manager; the .dev address should have no special access.
+Decision: jbenin@setonschool.net is the only campus manager. On verified signup that account is Manager and rooms.manager_id is set for every room. Temporary view lists that address until it exists. jbenin@setonschool.dev receives no special role or room assignment.
+Alternatives Considered: Keep both emails; treat .dev as a requester.
+Security Impact: Authorization stays server-side. Only the .net email receives campus-wide manager assignment.
+Privacy Impact: None.
+Accessibility Impact: None.
+Operational Impact: If the .dev account was already granted manager, it is demoted and rooms are reassigned to the .net account when that user exists.
+Migration or Rollback: supabase/migrations/20260829120000_campus_manager_net_only.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-help-support-email
+
+```text
+Decision ID: D-2026-08-29-help-support-email
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Open decision #18. The Help page was a long how-to with map-editor links. The owner asked for the same card layout as Account, Sign in, and Sign up, with a single contact line.
+Decision: Help uses the shared auth card layout. Phase 1 support contact is j03-b@setonschool.dev. Escalation beyond that address is still open.
+Alternatives Considered: Keep the how-to content; use TechAdmin@setonschool.net.
+Security Impact: Contact is display-only. It is not used for authorization.
+Privacy Impact: No requester or reservation details are shown on Help.
+Accessibility Impact: The address is a mailto link with visible text.
+Operational Impact: People email that address for questions. Map-editor links are no longer on Help.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-access-badge-colors
+
+```text
+Decision ID: D-2026-08-29-access-badge-colors
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Manage used plain text Admin and Manager headings. User and Trusted User pills were light blue and dark blue, which looked too close to Manager.
+Decision: Manage section titles use the same rank pills as Account: Admin gold, Manager blue. Guest remains green. User is a light grey pill. Trusted User is a dark grey pill. Labels stay on the pills so color is not the only signal.
+Alternatives Considered: Keep User/Trusted in blue; use colored bars instead of pills for Manage headings.
+Security Impact: None. Access level is still stored and authorized server-side.
+Privacy Impact: None.
+Accessibility Impact: Pill text remains the access label.
+Operational Impact: None.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-29-undo-approval
+
+```text
+Decision ID: D-2026-08-29-undo-approval
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Current reservations had no way to reverse an accidental approval. The owner asked for a yellow undo on approved reservations that returns them to Requests.
+Decision: Managers and Tech Admin may undo an active approved reservation for a space they manage. Undo deletes the occupancy row in reservations_confirmed (so the unique request_id can be reused on re-approval) and sets the linked reservation_requests status back to pending. The request reappears in Requests with approve/decline. This is a documented Approved → Submitted transition, not a cancellation.
+Alternatives Considered: Cancelled-by-manager (terminal); keep a cancelled confirmed row (blocked by unique request_id on re-approve).
+Security Impact: Authorization stays server-side. Temporary view still blocks mutations. Managers cannot undo reservations for rooms they do not manage.
+Privacy Impact: Public calendar still shows status and time only. After undo the time shows as Pending again, not requester details.
+Accessibility Impact: The undo control is a 44px button with an undo icon plus accessible name, not color alone.
+Operational Impact: None. No schema change.
+Migration or Rollback: src/lib/auth/reservation-actions.ts
+Documents Updated: this master plan
+```
 
 ---
 

@@ -13,9 +13,9 @@ import { DEFAULT_TIMEZONE } from "@/lib/domain/statuses";
  * when Supabase is not configured.
  *
  * Room availability on the map:
- * - No overlapping request → green (Available)
+ * - No overlapping request → green (Open)
  * - Pending request → yellow
- * - Reserved → red (Taken)
+ * - Reserved → red
  * - Blocked / Closed → gray
  */
 export interface CampusRequest {
@@ -64,13 +64,12 @@ function roomToSpace(room: CampusRoom, buildingName: string): PublicSpace {
     name: room.name,
     shortName: room.name,
     slug: room.slug,
-    description: `${buildingName} space. Edit data/campus.json to update.`,
+    description: null,
     building: buildingName,
     capacity: null,
     timezone,
-    publicRules: null,
-    status: "active",
-    isPublic: true,
+    currentStatus: "Open",
+    isActive: true,
   };
 }
 

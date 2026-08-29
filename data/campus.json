@@ -81,9 +81,9 @@
           "requests": []
         },
         {
-          "id": "faustina-hall",
-          "name": "Faustina Hall",
-          "slug": "faustina-hall",
+          "id": "faustina",
+          "name": "Faustina",
+          "slug": "faustina",
           "requests": [
             {
               "start": "2026-06-30T09:00:00-04:00",
@@ -131,21 +131,6 @@
       "name": "Seton campus",
       "rooms": [
         {
-          "id": "dmc",
-          "name": "DMC",
-          "slug": "dmc",
-          "requests": [
-            {
-              "start": "2026-07-01T08:00:00-04:00",
-              "end": "2026-07-01T17:00:00-04:00",
-              "status": "Blocked",
-              "requesterName": "Facilities",
-              "requestedAt": "2026-06-24T11:00:00-04:00",
-              "category": "Other"
-            }
-          ]
-        },
-        {
           "id": "gym",
           "name": "Gym",
           "slug": "gym",
@@ -168,6 +153,58 @@
             }
           ]
         }
+      ]
+    },
+    {
+      "id": "divine-mercy-center",
+      "name": "Divine Mercy Center",
+      "rooms": [
+        { "id": "classroom", "name": "Classroom", "slug": "classroom", "requests": [] },
+        { "id": "common-space", "name": "Common Space", "slug": "common-space", "requests": [] }
+      ]
+    },
+    {
+      "id": "carlo-acutis",
+      "name": "Carlo Acutis Tech Center",
+      "rooms": [
+        { "id": "vex-space", "name": "VEX Space", "slug": "vex-space", "requests": [] }
+      ]
+    },
+    {
+      "id": "main-building",
+      "name": "Main Building",
+      "rooms": [
+        { "id": "benedict", "name": "Benedict", "slug": "benedict", "requests": [] },
+        { "id": "laboure", "name": "Laboure", "slug": "laboure", "requests": [] },
+        {
+          "id": "chapel",
+          "name": "Chapel",
+          "slug": "chapel",
+          "requests": []
+        },
+        { "id": "aquinas", "name": "Aquinas", "slug": "aquinas", "requests": [] },
+        { "id": "clare", "name": "Clare", "slug": "clare", "requests": [] },
+        { "id": "siena", "name": "Siena", "slug": "siena", "requests": [] },
+        { "id": "claude", "name": "Claude", "slug": "claude", "requests": [] },
+        { "id": "bosco", "name": "Bosco (Art)", "slug": "bosco", "requests": [] },
+        { "id": "anthony", "name": "Anthony", "slug": "anthony", "requests": [] },
+        { "id": "vianney", "name": "Vianney", "slug": "vianney", "requests": [] },
+        { "id": "imelda", "name": "Imelda", "slug": "imelda", "requests": [] },
+        { "id": "joan", "name": "Joan", "slug": "joan", "requests": [] },
+        {
+          "id": "jerome",
+          "name": "Jerome (Library)",
+          "slug": "jerome",
+          "requests": []
+        },
+        {
+          "id": "stein",
+          "name": "Stein (Computer Lab)",
+          "slug": "stein",
+          "requests": []
+        },
+        { "id": "teresa", "name": "Teresa", "slug": "teresa", "requests": [] },
+        { "id": "goretti", "name": "Goretti", "slug": "goretti", "requests": [] }
       ]
     }
   ]

@@ -1,4 +1,4 @@
-import type { PublicStatus } from "@/lib/domain/statuses";
+import { PUBLIC_STATUS_LABELS, type PublicStatus } from "@/lib/domain/statuses";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLES: Record<
@@ -48,7 +48,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className={cn("h-2 w-2 shrink-0 rounded-full", styles.dot)}
         aria-hidden="true"
       />
-      {status}
+      {PUBLIC_STATUS_LABELS[status]}
     </span>
   );
 }

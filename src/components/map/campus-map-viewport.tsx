@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -108,6 +109,7 @@ interface CampusMapViewportProps {
   level: MapLevel;
   regions: MapRegion[];
   getRegionStatus?: (region: MapRegion) => PublicStatus | null;
+  isRegionActive?: (region: MapRegion) => boolean;
   onRegionClick?: (region: MapRegion) => void;
   /** Building to zoom toward (drill-in) */
   drillRegion?: MapRegion | null;
@@ -494,6 +496,7 @@ export function CampusMapViewport({
   level,
   regions,
   getRegionStatus,
+  isRegionActive,
   onRegionClick,
   drillRegion = null,
   drillOutRegion = null,
@@ -515,6 +518,10 @@ export function CampusMapViewport({
   const viewportRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const regionsRef = useRef(regions);
+  const proximityRegions = useMemo(
+    () => regions.filter((region) => isRegionActive?.(region) !== false),
+    [regions, isRegionActive],
+  );
 
   const mouseRawRef = useRef({ clientX: 0, clientY: 0, active: false });
   const lastPointerRef = useRef({ clientX: 0, clientY: 0 });
@@ -580,8 +587,8 @@ export function CampusMapViewport({
   }, [interactionLocked]);
 
   useLayoutEffect(() => {
-    regionsRef.current = regions;
-  }, [regions]);
+    regionsRef.current = proximityRegions;
+  }, [proximityRegions]);
 
   const effectiveZoom = reduceMotion ? 1 : zoom;
   const logoParallaxScale =
@@ -1506,6 +1513,7 @@ export function CampusMapViewport({
             regions={regions}
             variant="campus"
             mobileMode={isMobileMapMode}
+            isRegionActive={isRegionActive}
             getColors={(region) =>
               resolveRegionColors(region, getRegionStatus?.(region) ?? null)
             }
@@ -1516,6 +1524,7 @@ export function CampusMapViewport({
             regions={regions.filter(regionHasPolygon)}
             mobileMode={isMobileMapMode}
             mapRotated={mapRotated}
+            isRegionActive={isRegionActive}
           />
 
           {regions
@@ -1523,13 +1532,17 @@ export function CampusMapViewport({
             .map((region) => {
               const status = getRegionStatus?.(region);
               const colors = resolveRegionColors(region, status ?? null);
+              const regionActive = isRegionActive?.(region) ?? true;
 
               return (
                 <MapRegionRectButton
                   key={region.id}
                   region={region}
-                  colors={colors}
-                  onClick={() => onRegionClick?.(region)}
+                  colors={regionActive ? colors : { fill: "transparent", stroke: "transparent" }}
+                  interactive={regionActive}
+                  onClick={
+                    regionActive ? () => onRegionClick?.(region) : undefined
+                  }
                   ariaLabel={region.label}
                 />
               );

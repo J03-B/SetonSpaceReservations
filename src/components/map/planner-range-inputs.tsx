@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { snapMinutesToPlannerSlot } from "@/lib/availability/range-time";
 import { cn } from "@/lib/utils";
 
 function parseDateInput(value: string): Date | null {
@@ -40,13 +41,13 @@ function minutesTo12h(minutes: number): {
   minute: 0 | 30;
   period: "AM" | "PM";
 } {
-  const clamped = Math.min(23 * 60 + 30, Math.max(0, minutes));
-  const h24 = Math.floor(clamped / 60);
-  const m = clamped % 60 >= 15 ? 30 : 0;
+  const snapped = snapMinutesToPlannerSlot(minutes);
+  const h24 = Math.floor(snapped / 60);
+  const m = (snapped % 60) as 0 | 30;
   const period: "AM" | "PM" = h24 >= 12 ? "PM" : "AM";
   let hour12 = h24 % 12;
   if (hour12 === 0) hour12 = 12;
-  return { hour12, minute: m as 0 | 30, period };
+  return { hour12, minute: m, period };
 }
 
 function from12h(hour12: number, minute: 0 | 30, period: "AM" | "PM"): number {

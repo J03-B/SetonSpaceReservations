@@ -8,6 +8,25 @@ export function regionHasPolygon(
   return Boolean(region.points && region.points.length >= 3);
 }
 
+export function pointsFromBounds(
+  region: Pick<MapRegion, "x" | "y" | "width" | "height">,
+): MapPoint[] {
+  return [
+    { x: region.x, y: region.y },
+    { x: region.x + region.width, y: region.y },
+    { x: region.x + region.width, y: region.y + region.height },
+    { x: region.x, y: region.y + region.height },
+  ];
+}
+
+/** Rooms stored as rectangles get four corners so they can be dragged like drawn shapes. */
+export function ensureRegionPoints(
+  region: MapRegion,
+): MapRegion & { points: MapPoint[] } {
+  if (regionHasPolygon(region)) return region;
+  return { ...region, points: pointsFromBounds(region) };
+}
+
 export function boundingBoxFromPoints(
   points: MapPoint[],
 ): Pick<MapRegion, "x" | "y" | "width" | "height"> {

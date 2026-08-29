@@ -1,5 +1,5 @@
 # Supabase local development — see https://supabase.com/docs/guides/cli/config
-project_id = "seton-space-reservations"
+project_id = "obgzjftttrzhiiujtccd"
 
 [api]
 enabled = true
@@ -26,3 +26,13 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 enable_confirmations = true
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.magic_link]
+subject = "Your 6-digit sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Your 6-digit sign-in code"
+content_path = "./supabase/templates/magic_link.html"

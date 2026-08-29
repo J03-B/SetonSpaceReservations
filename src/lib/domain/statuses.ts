@@ -13,6 +13,18 @@ export const PUBLIC_STATUSES = [
 
 export type PublicStatus = (typeof PUBLIC_STATUSES)[number];
 
+export const ROOM_CURRENT_STATUSES = ["Open", "Pending", "Reserved"] as const;
+
+export type RoomCurrentStatus = (typeof ROOM_CURRENT_STATUSES)[number];
+
+export const PUBLIC_STATUS_LABELS: Record<PublicStatus, string> = {
+  Available: "Open",
+  Pending: "Pending",
+  Reserved: "Reserved",
+  Blocked: "Blocked",
+  Closed: "Closed",
+};
+
 export const RESERVATION_REQUEST_STATUSES = [
   "Draft",
   "Submitted",

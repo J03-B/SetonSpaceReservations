@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 const LEGEND_ITEMS = [
   {
     key: "Available" as const,
-    name: "Available",
+    name: "Open",
     description: "Free for your whole time window",
   },
   {
@@ -22,7 +22,7 @@ const LEGEND_ITEMS = [
   },
   {
     key: "Reserved" as const,
-    name: "Taken",
+    name: "Reserved",
     description: "Already booked",
   },
 ];

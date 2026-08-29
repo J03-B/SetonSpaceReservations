@@ -11,19 +11,26 @@ import {
 } from "react";
 import type { PublicSpace } from "@/lib/domain/types";
 import {
+  getMapFloor,
+  getMapFloorCount,
   getMapLevel,
   type MapPoint,
   type MapRegion,
 } from "@/lib/map/map-config";
 import {
   clientToPercent,
+  clientToSnappedImagePercent,
+  exportFloorsJson,
   exportRegionsArrayTypeScript,
   exportRegionsJson,
   exportRegionsTypeScript,
+  exportStackedFloorsTypeScript,
   slugifyId,
 } from "@/lib/map/editor-utils";
+import { MapPixelLoupe } from "@/components/map/map-pixel-loupe";
 import {
   boundingBoxFromPoints,
+  ensureRegionPoints,
   isNearPoint,
   regionHasPolygon,
 } from "@/lib/map/region-geometry";
@@ -37,6 +44,8 @@ import { MAP_FLOOR_INSET } from "@/components/map/map-chrome-motion";
 import { cn } from "@/lib/utils";
 
 type EditorStep = "idle" | "drawing" | "naming";
+
+const EMPTY_ROOMS: MapRegion[] = [];
 
 function computeFitSize(
   viewportW: number,
@@ -67,14 +76,24 @@ export function BuildingMapEditor({
   spaces = [],
 }: BuildingMapEditorProps) {
   const level = getMapLevel(buildingId);
+  const floorCount = getMapFloorCount(level);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const mapLayerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const [regions, setRegions] = useState<MapRegion[]>(
-    () => level?.regions ?? [],
+  const [floorIndex, setFloorIndex] = useState(0);
+  const [floorsRegions, setFloorsRegions] = useState<MapRegion[][]>(() =>
+    Array.from({ length: floorCount }, (_, index) =>
+      level
+        ? getMapFloor(level, index).regions.map(ensureRegionPoints)
+        : [],
+    ),
   );
+  const regions = floorsRegions[floorIndex] ?? EMPTY_ROOMS;
+  const activeFloor = level
+    ? getMapFloor(level, floorIndex)
+    : { number: 1, imageSrc: "", regions: [] };
   const [fit, setFit] = useState({ fitW: 0, fitH: 0 });
   const [step, setStep] = useState<EditorStep>("idle");
   const [drawingPoints, setDrawingPoints] = useState<MapPoint[]>([]);
@@ -88,6 +107,10 @@ export function BuildingMapEditor({
   const [draftLabel, setDraftLabel] = useState("");
   const [draftId, setDraftId] = useState("");
   const [draftSpaceSlug, setDraftSpaceSlug] = useState("");
+  const [loupePointer, setLoupePointer] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const refreshFit = useCallback(() => {
     const viewport = viewportRef.current;
@@ -117,7 +140,19 @@ export function BuildingMapEditor({
     const observer = new ResizeObserver(() => refreshFit());
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [refreshFit]);
+  }, [refreshFit, activeFloor.imageSrc]);
+
+  const setRegions = useCallback(
+    (updater: MapRegion[] | ((prev: MapRegion[]) => MapRegion[])) => {
+      setFloorsRegions((prev) =>
+        prev.map((list, index) => {
+          if (index !== floorIndex) return list;
+          return typeof updater === "function" ? updater(list) : updater;
+        }),
+      );
+    },
+    [floorIndex],
+  );
 
   const resetDrawing = useCallback(() => {
     setStep("idle");
@@ -125,6 +160,20 @@ export function BuildingMapEditor({
     setPendingPoints(null);
     setCursorPoint(null);
   }, []);
+
+  const switchFloor = useCallback(
+    (index: number) => {
+      if (index === floorIndex) return;
+      resetDrawing();
+      setSelectedId(null);
+      setDraftLabel("");
+      setDraftId("");
+      setDraftSpaceSlug("");
+      setLoupePointer(null);
+      setFloorIndex(index);
+    },
+    [floorIndex, resetDrawing],
+  );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -139,30 +188,56 @@ export function BuildingMapEditor({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [step, resetDrawing]);
 
+  const pointFromClient = useCallback((clientX: number, clientY: number) => {
+    const mapLayer = mapLayerRef.current;
+    if (!mapLayer) return null;
+    const mapRect = mapLayer.getBoundingClientRect();
+    const img = imgRef.current;
+    if (img?.naturalWidth && img.naturalHeight) {
+      return clientToSnappedImagePercent(
+        clientX,
+        clientY,
+        mapRect,
+        img.naturalWidth,
+        img.naturalHeight,
+      ).point;
+    }
+    return clientToPercent(clientX, clientY, mapRect);
+  }, []);
+
+  const startDrawing = useCallback(() => {
+    setSelectedId(null);
+    setDrawingPoints([]);
+    setPendingPoints(null);
+    setCursorPoint(null);
+    setStep("drawing");
+  }, []);
+
   const handleMapClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       if (step === "naming") return;
 
-      const mapLayer = mapLayerRef.current;
-      if (!mapLayer) return;
-
-      const mapRect = mapLayer.getBoundingClientRect();
-      const percent = clientToPercent(e.clientX, e.clientY, mapRect);
+      const percent = pointFromClient(e.clientX, e.clientY);
+      if (!percent) return;
 
       if (step === "idle") {
-        setDrawingPoints([percent]);
-        setStep("drawing");
+        const target = e.target as HTMLElement | null;
+        if (target?.closest("button, [data-map-vertex]")) return;
+        setSelectedId(null);
         return;
       }
 
       if (step === "drawing") {
+        const mapLayer = mapLayerRef.current;
         if (
+          mapLayer &&
           drawingPoints.length >= 3 &&
-          isNearPoint(percent, drawingPoints[0], mapRect)
+          isNearPoint(percent, drawingPoints[0], mapLayer.getBoundingClientRect())
         ) {
           setPendingPoints(drawingPoints);
           setStep("naming");
           setCursorPoint(null);
+          setLoupePointer(null);
           setDraftLabel("");
           setDraftId("");
           setDraftSpaceSlug("");
@@ -172,24 +247,22 @@ export function BuildingMapEditor({
         setDrawingPoints((prev) => [...prev, percent]);
       }
     },
-    [step, drawingPoints],
+    [step, drawingPoints, pointFromClient],
   );
 
   const handleMapMove = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
+      setLoupePointer({ x: e.clientX, y: e.clientY });
       if (step !== "drawing") {
         setCursorPoint(null);
         return;
       }
 
-      const mapLayer = mapLayerRef.current;
-      if (!mapLayer) return;
-
-      setCursorPoint(
-        clientToPercent(e.clientX, e.clientY, mapLayer.getBoundingClientRect()),
-      );
+      const percent = pointFromClient(e.clientX, e.clientY);
+      if (!percent) return;
+      setCursorPoint(percent);
     },
-    [step],
+    [step, pointFromClient],
   );
 
   const saveRegion = useCallback(() => {
@@ -207,7 +280,14 @@ export function BuildingMapEditor({
     setDraftLabel("");
     setDraftId("");
     setDraftSpaceSlug("");
-  }, [pendingPoints, draftLabel, draftId, draftSpaceSlug, resetDrawing]);
+  }, [
+    pendingPoints,
+    draftLabel,
+    draftId,
+    draftSpaceSlug,
+    resetDrawing,
+    setRegions,
+  ]);
 
   const cancelDraft = useCallback(() => {
     resetDrawing();
@@ -221,41 +301,80 @@ export function BuildingMapEditor({
       setRegions((prev) => prev.filter((r) => r.id !== id));
       if (selectedId === id) setSelectedId(null);
     },
-    [selectedId],
+    [selectedId, setRegions],
   );
 
-  const updateRegionPoints = useCallback((regionId: string, points: MapPoint[]) => {
-    setRegions((prev) =>
-      prev.map((region) => {
-        if (region.id !== regionId) return region;
-        return {
-          ...region,
-          ...boundingBoxFromPoints(points),
-          points,
-        };
-      }),
-    );
-  }, []);
+  const updateRegionPoints = useCallback(
+    (regionId: string, points: MapPoint[]) => {
+      setRegions((prev) =>
+        prev.map((region) => {
+          if (region.id !== regionId) return region;
+          return {
+            ...region,
+            ...boundingBoxFromPoints(points),
+            points,
+          };
+        }),
+      );
+    },
+    [setRegions],
+  );
+
+  const stackedFloors = useMemo(() => {
+    if (!level) return [];
+    return Array.from({ length: floorCount }, (_, index) => {
+      const floor = getMapFloor(level, index);
+      return {
+        number: floor.number,
+        imageSrc: floor.imageSrc,
+        regions: floorsRegions[index] ?? [],
+      };
+    });
+  }, [level, floorCount, floorsRegions]);
 
   const selectedRegion = useMemo(
     () => regions.find((r) => r.id === selectedId) ?? null,
     [regions, selectedId],
   );
 
+  const selectRoom = useCallback(
+    (regionId: string) => {
+      setRegions((prev) =>
+        prev.map((region) =>
+          region.id === regionId ? ensureRegionPoints(region) : region,
+        ),
+      );
+      setSelectedId(regionId);
+    },
+    [setRegions],
+  );
+
+  const handleVertexPointsChange = useCallback(
+    (points: MapPoint[]) => {
+      if (!selectedId) return;
+      updateRegionPoints(selectedId, points);
+    },
+    [selectedId, updateRegionPoints],
+  );
+
   const handleExport = useCallback(
-    async (format: "json" | "typescript" | "regions") => {
+    async (format: "json" | "typescript" | "regions" | "floors") => {
       if (!level) return;
       const output =
         format === "json"
-          ? exportRegionsJson(buildingId, regions)
+          ? floorCount > 1
+            ? exportFloorsJson(buildingId, stackedFloors)
+            : exportRegionsJson(buildingId, regions)
           : format === "regions"
             ? exportRegionsArrayTypeScript(regions)
-            : exportRegionsTypeScript(
-                buildingId,
-                level.title,
-                level.imageSrc,
-                regions,
-              );
+            : format === "floors"
+              ? exportStackedFloorsTypeScript(stackedFloors)
+              : exportRegionsTypeScript(
+                  buildingId,
+                  level.title,
+                  level.imageSrc,
+                  regions,
+                );
       setExportOutput(output);
       setShowExport(true);
       try {
@@ -264,7 +383,7 @@ export function BuildingMapEditor({
         // Clipboard may be blocked.
       }
     },
-    [buildingId, level, regions],
+    [buildingId, level, regions, floorCount, stackedFloors],
   );
 
   const instructions = useMemo(() => {
@@ -278,13 +397,15 @@ export function BuildingMapEditor({
       return "Name the room and link a reservable space if needed.";
     }
     if (selectedRegion && regionHasPolygon(selectedRegion)) {
-      return "Drag the yellow corner dots to adjust the selected room.";
+      return "Drag a yellow corner. The magnifier shows the exact image pixel.";
     }
     if (selectedId) {
       return "Selected room has no polygon — draw a new shape or pick another room.";
     }
-    return "Click to draw a room, or select one in the Rooms list to edit its corners.";
-  }, [step, drawingPoints.length, selectedRegion, selectedId]);
+    return floorCount > 1
+      ? "Pick a floor, click a room to edit its corners, or start Draw room."
+      : "Click a room to edit its corners, or start Draw room.";
+  }, [step, drawingPoints.length, selectedRegion, selectedId, floorCount]);
 
   const editorColors = useCallback(
     () => ({
@@ -310,11 +431,34 @@ export function BuildingMapEditor({
         paddingBottom: MAP_FLOOR_INSET,
       }}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center p-3">
-        <div className="pointer-events-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-lg border border-border bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm">
+      <div className="relative z-30 flex shrink-0 justify-center px-3 pb-2">
+        <div className="flex max-w-5xl flex-wrap items-center gap-2 rounded-lg border border-border bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm">
           <span className="font-semibold text-text-primary">
             {level.title} editor
+            {floorCount > 1 ? ` · Floor ${activeFloor.number}` : ""}
           </span>
+          {floorCount > 1 ? (
+            <span className="flex gap-1">
+              {Array.from({ length: floorCount }, (_, index) => {
+                const floorNumber = getMapFloor(level, index).number;
+                return (
+                  <button
+                    key={floorNumber}
+                    type="button"
+                    onClick={() => switchFloor(index)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-medium",
+                      index === floorIndex
+                        ? "bg-action-primary text-text-inverse"
+                        : "border border-border hover:bg-surface-subtle",
+                    )}
+                  >
+                    Floor {floorNumber}
+                  </button>
+                );
+              })}
+            </span>
+          ) : null}
           <span className="hidden text-text-secondary sm:inline">·</span>
           <span className="text-text-secondary">{instructions}</span>
           {step === "drawing" ? (
@@ -325,7 +469,15 @@ export function BuildingMapEditor({
             >
               Cancel shape
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={startDrawing}
+              className="rounded-md bg-action-primary px-2.5 py-1 text-xs font-medium text-text-inverse hover:bg-action-primary-hover"
+            >
+              Draw room
+            </button>
+          )}
           <span className="ml-auto flex flex-wrap gap-2">
             <button
               type="button"
@@ -337,17 +489,27 @@ export function BuildingMapEditor({
             <button
               type="button"
               onClick={() => handleExport("regions")}
-              className="rounded-md bg-action-primary px-2.5 py-1 text-xs font-medium text-text-inverse hover:bg-action-primary-hover"
-            >
-              Copy regions code
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExport("typescript")}
               className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-subtle"
             >
-              Copy full block
+              Copy this floor
             </button>
+            {floorCount > 1 ? (
+              <button
+                type="button"
+                onClick={() => handleExport("floors")}
+                className="rounded-md bg-action-primary px-2.5 py-1 text-xs font-medium text-text-inverse hover:bg-action-primary-hover"
+              >
+                Copy all floors
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleExport("typescript")}
+                className="rounded-md bg-action-primary px-2.5 py-1 text-xs font-medium text-text-inverse hover:bg-action-primary-hover"
+              >
+                Copy regions code
+              </button>
+            )}
             <Link
               href="/"
               className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-subtle"
@@ -367,7 +529,7 @@ export function BuildingMapEditor({
             ref={mapLayerRef}
             className={cn(
               "relative",
-              step !== "naming" && "cursor-crosshair",
+              step === "drawing" && "cursor-crosshair",
             )}
             style={{
               width: fit.fitW > 0 ? fit.fitW : "100%",
@@ -375,15 +537,18 @@ export function BuildingMapEditor({
             }}
             onClick={handleMapClick}
             onMouseMove={handleMapMove}
-            onMouseLeave={() => setCursorPoint(null)}
+            onMouseLeave={() => {
+              setCursorPoint(null);
+              setLoupePointer(null);
+            }}
             role="application"
             aria-label={`${level.title} room editor`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={imgRef}
-              src={level.imageSrc}
-              alt={`${level.title} floor plan`}
+              src={activeFloor.imageSrc}
+              alt={`${level.title} floor ${activeFloor.number}`}
               onLoad={refreshFit}
               className="pointer-events-none block h-full w-full object-contain mix-blend-screen"
               draggable={false}
@@ -394,6 +559,7 @@ export function BuildingMapEditor({
               getColors={editorColors}
               selectedRegionId={selectedId}
               editMode
+              onRegionClick={step === "idle" ? (region) => selectRoom(region.id) : undefined}
             />
 
             {regions
@@ -405,6 +571,7 @@ export function BuildingMapEditor({
                   colors={editorColors()}
                   selected={selectedId === region.id}
                   editMode
+                  onClick={() => selectRoom(region.id)}
                 />
               ))}
 
@@ -424,12 +591,20 @@ export function BuildingMapEditor({
             regionHasPolygon(selectedRegion) ? (
               <PolygonVertexEditor
                 points={selectedRegion.points}
-                onPointsChange={(points) =>
-                  updateRegionPoints(selectedRegion.id, points)
-                }
+                onPointsChange={handleVertexPointsChange}
                 mapLayerRef={mapLayerRef}
+                imgRef={imgRef}
               />
             ) : null}
+
+            <MapPixelLoupe
+              visible={step === "drawing" && loupePointer !== null}
+              clientX={loupePointer?.x ?? 0}
+              clientY={loupePointer?.y ?? 0}
+              focusPercent={cursorPoint}
+              mapLayerRef={mapLayerRef}
+              imgRef={imgRef}
+            />
           </div>
         </div>
       </div>
@@ -452,7 +627,14 @@ export function BuildingMapEditor({
                 value={draftLabel}
                 onChange={(e) => {
                   setDraftLabel(e.target.value);
-                  if (!draftId) setDraftId(slugifyId(e.target.value));
+                  if (!draftId) {
+                    const slug = slugifyId(e.target.value);
+                    setDraftId(
+                      activeFloor.number > 1
+                        ? `f${activeFloor.number}-${slug}`
+                        : slug,
+                    );
+                  }
                 }}
                 className="min-h-10 w-full rounded-md border border-border px-3 py-2 text-sm"
                 placeholder="Faustina"
@@ -513,7 +695,11 @@ export function BuildingMapEditor({
       {showRegions ? (
         <div className="absolute inset-y-0 right-0 z-40 w-full max-w-sm overflow-y-auto border-l border-border bg-surface p-4 shadow-lg sm:top-14">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold">Rooms ({regions.length})</h2>
+            <h2 className="font-semibold">
+              {floorCount > 1
+                ? `Floor ${activeFloor.number} rooms (${regions.length})`
+                : `Rooms (${regions.length})`}
+            </h2>
             <button
               type="button"
               onClick={() => setShowRegions(false)}
@@ -523,7 +709,11 @@ export function BuildingMapEditor({
             </button>
           </div>
           {regions.length === 0 ? (
-            <p className="text-sm text-text-secondary">No rooms drawn yet.</p>
+            <p className="text-sm text-text-secondary">
+              {floorCount > 1
+                ? "No rooms drawn on this floor yet."
+                : "No rooms drawn yet."}
+            </p>
           ) : (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {regions.map((r) => (
@@ -533,7 +723,7 @@ export function BuildingMapEditor({
                 >
                   <button
                     type="button"
-                    onClick={() => setSelectedId(r.id)}
+                    onClick={() => selectRoom(r.id)}
                     className="text-left font-medium hover:text-action-primary"
                   >
                     {r.label}
@@ -579,7 +769,10 @@ export function BuildingMapEditor({
           <pre className="max-h-48 overflow-auto p-4 text-xs">{exportOutput}</pre>
           <p className="border-t border-border px-4 py-2 text-xs text-text-secondary">
             Paste into <code>src/lib/map/map-config.ts</code> under &quot;
-            {buildingId}&quot;.
+            {buildingId}&quot;
+            {floorCount > 1
+              ? ", or send the copied floors block so the rooms can be added."
+              : "."}
           </p>
         </div>
       ) : null}

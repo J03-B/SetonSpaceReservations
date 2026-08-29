@@ -1,4 +1,4 @@
-import type { PublicStatus } from "./statuses";
+import type { PublicStatus, RoomCurrentStatus } from "./statuses";
 
 export type PublicActivityCategory = "Academic" | "Club" | "Other";
 
@@ -24,9 +24,8 @@ export interface PublicSpace {
   building: string | null;
   capacity: number | null;
   timezone: string;
-  publicRules: string | null;
-  status: "active" | "archived";
-  isPublic: boolean;
+  currentStatus: RoomCurrentStatus;
+  isActive: boolean;
 }
 
 export interface OperatingHours {

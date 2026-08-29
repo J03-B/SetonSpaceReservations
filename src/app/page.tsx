@@ -5,6 +5,8 @@ import { getPublicSpaces } from "@/lib/data/spaces";
 import { getSessionUser } from "@/lib/auth/session";
 import { findRegionBySpaceSlug } from "@/lib/map/map-config";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -28,7 +30,12 @@ export default async function HomePage({
     getSessionUser(),
   ]);
 
-  const regionMatch = room ? findRegionBySpaceSlug(room) : undefined;
+  const selectedSpace = spaces.find(
+    (s) => s.slug === room && s.isActive,
+  );
+  const regionMatch = selectedSpace
+    ? findRegionBySpaceSlug(selectedSpace.slug)
+    : undefined;
 
   const rangeStart = startOfDay(new Date());
   const rangeEnd = endOfDay(addDays(new Date(), 14));
@@ -42,8 +49,10 @@ export default async function HomePage({
     <MapWorkspace
       spaces={spaces}
       slots={slots}
+      isSignedIn={Boolean(session)}
+      canRequest={session?.isRequester ?? false}
       isManager={session?.isManager ?? false}
-      initialSelectedSlug={room}
+      initialSelectedSlug={selectedSpace?.slug}
       initialMapId={regionMatch?.mapId ?? buildingEditMode ?? undefined}
       campusEditMode={campusEditMode}
       buildingEditMode={buildingEditMode}

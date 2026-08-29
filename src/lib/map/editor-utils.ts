@@ -65,6 +65,7 @@ export function clientToPercentObjectContain(
 function formatRegionBlock(r: MapRegion, indent: string): string {
   const extras: string[] = [];
   if (r.childMapId) extras.push(`childMapId: "${r.childMapId}"`);
+  if (r.focusRegionId) extras.push(`focusRegionId: "${r.focusRegionId}"`);
   if (r.spaceSlug) extras.push(`spaceSlug: "${r.spaceSlug}"`);
   if (r.hoverGroupId) extras.push(`hoverGroupId: "${r.hoverGroupId}"`);
   if (r.hideLabel) extras.push(`hideLabel: true`);
@@ -79,7 +80,7 @@ function formatRegionBlock(r: MapRegion, indent: string): string {
     ? `,\n${indent}  points: [\n${r.points
         .map(
           (p) =>
-            `${indent}    { x: ${p.x.toFixed(2)}, y: ${p.y.toFixed(2)} }`,
+            `${indent}    { x: ${p.x.toFixed(3)}, y: ${p.y.toFixed(3)} }`,
         )
         .join(",\n")}\n${indent}  ]`
     : "";
@@ -108,6 +109,48 @@ export function clientToPercent(
   };
 }
 
+export function snapPercentToImagePixel(
+  percent: MapPoint,
+  naturalWidth: number,
+  naturalHeight: number,
+): { point: MapPoint; pixelX: number; pixelY: number } {
+  if (naturalWidth <= 0 || naturalHeight <= 0) {
+    return { point: percent, pixelX: 0, pixelY: 0 };
+  }
+
+  const pixelX = Math.max(
+    0,
+    Math.min(naturalWidth - 1, Math.floor((percent.x / 100) * naturalWidth)),
+  );
+  const pixelY = Math.max(
+    0,
+    Math.min(naturalHeight - 1, Math.floor((percent.y / 100) * naturalHeight)),
+  );
+
+  return {
+    pixelX,
+    pixelY,
+    point: {
+      x: ((pixelX + 0.5) / naturalWidth) * 100,
+      y: ((pixelY + 0.5) / naturalHeight) * 100,
+    },
+  };
+}
+
+export function clientToSnappedImagePercent(
+  clientX: number,
+  clientY: number,
+  mapRect: DOMRect,
+  naturalWidth: number,
+  naturalHeight: number,
+): { point: MapPoint; pixelX: number; pixelY: number } {
+  return snapPercentToImagePixel(
+    clientToPercent(clientX, clientY, mapRect),
+    naturalWidth,
+    naturalHeight,
+  );
+}
+
 /** Build rect from two corner clicks. */
 export function rectFromCorners(
   a: { x: number; y: number },
@@ -130,6 +173,14 @@ export function slugifyId(label: string): string {
 /** Export regions as JSON for the configure tool. */
 export function exportRegionsJson(mapId: string, regions: MapRegion[]): string {
   return JSON.stringify({ mapId, regions }, null, 2);
+}
+
+/** Export stacked floors as JSON — paste back or send for map-config updates. */
+export function exportFloorsJson(
+  mapId: string,
+  floors: { number: number; imageSrc: string; regions: MapRegion[] }[],
+): string {
+  return JSON.stringify({ mapId, floors }, null, 2);
 }
 
 /** Export as TypeScript snippet to paste into map-config.ts */
@@ -162,4 +213,32 @@ export function exportRegionsArrayTypeScript(regions: MapRegion[]): string {
   return `regions: [
 ${regionLines}
     ],`;
+}
+
+/** Export stacked floors + floor-1 regions for map-config.ts */
+export function exportStackedFloorsTypeScript(
+  floors: { number: number; imageSrc: string; regions: MapRegion[] }[],
+): string {
+  const floorBlocks = floors.map((floor) => {
+    const regionLines = floor.regions
+      .map((region) => formatRegionBlock(region, "          "))
+      .join(",\n");
+    const regionsBody =
+      floor.regions.length > 0
+        ? `[\n${regionLines}\n        ]`
+        : "[]";
+    return `    {
+      number: ${floor.number},
+      imageSrc: "${floor.imageSrc}",
+      regions: ${regionsBody},
+    }`;
+  });
+
+  const floorOneRegions = floors[0]?.regions ?? [];
+
+  return `${exportRegionsArrayTypeScript(floorOneRegions)}
+
+floors: [
+${floorBlocks.join(",\n")}
+],`;
 }

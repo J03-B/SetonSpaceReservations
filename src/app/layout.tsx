@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { DeveloperWatermark } from "@/components/layout/developer-watermark";
+import { RouteFade } from "@/components/layout/route-fade";
 import { SiteHeader } from "@/components/layout/site-header";
+import { TempViewBanner } from "@/components/layout/temp-view-banner";
 import { UnsupportedScreenGate } from "@/components/layout/unsupported-screen-gate";
 import { getSessionUser } from "@/lib/auth/session";
 import { BRAND } from "@/lib/brand";
@@ -36,10 +39,20 @@ export default async function RootLayout({
     <html lang="en" className="h-full">
       <body className="flex h-full flex-col overflow-hidden bg-surface-subtle text-text-primary">
         <UnsupportedScreenGate>
-          <SiteHeader isManager={session?.isManager ?? false} />
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {children}
+          <SiteHeader
+            isSignedIn={Boolean(session)}
+            isManager={session?.isManager ?? false}
+          />
+          {session?.isImpersonating ? (
+            <TempViewBanner
+              fullName={session.fullName}
+              email={session.email}
+            />
+          ) : null}
+          <main className="page-main flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-subtle">
+            <RouteFade>{children}</RouteFade>
           </main>
+          <DeveloperWatermark />
         </UnsupportedScreenGate>
       </body>
     </html>

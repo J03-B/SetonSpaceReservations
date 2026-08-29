@@ -410,7 +410,8 @@ export function getDrillCrossfadeOpacity(expansion: number): number {
   return easeInOutCubic(t);
 }
 
-function computeFloorScaleProgress(
+/** Shared by the drill frame scale and the floor camera lerp so they stay locked. */
+export function computeFloorScaleProgress(
   expansion: number,
   direction: "in" | "out",
 ): number {

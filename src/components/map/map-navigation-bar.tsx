@@ -13,17 +13,28 @@ export interface MapNavigationBreadcrumb {
   title: string;
 }
 
+export interface FloorControlMeta {
+  current: number;
+  min: number;
+  max: number;
+  canUp: boolean;
+  canDown: boolean;
+}
+
 export interface MapNavigationMeta {
   breadcrumbs: MapNavigationBreadcrumb[];
   canGoBack: boolean;
   isTransitioning: boolean;
   chromeShown: boolean;
   chromeMotionMode: ChromeMotionMode;
+  floorControl?: FloorControlMeta | null;
 }
 
 export interface MapNavigationActions {
   onBack: () => void;
   onNavigateToIndex: (index: number) => void;
+  onFloorUp?: () => void;
+  onFloorDown?: () => void;
 }
 
 interface MapNavigationBarProps {

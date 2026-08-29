@@ -24,11 +24,11 @@ All product, design, and engineering decisions must follow:
 
 - [x] Repository structure and reference docs
 - [x] Design tokens and public UI shell
-- [x] Public pages: Availability, Spaces, How it works, Sign in placeholder
-- [x] Supabase schema migration (core entities + RLS + public availability RPC)
+- [x] Public pages: Availability, Spaces, How it works, Sign in
+- [x] Supabase schema: users, rooms, reservation_requests, reservations_confirmed
 - [x] Demo mode when Supabase is not configured
-- [ ] Supabase project linked and migrations applied
-- [ ] Vercel deployment
+- [x] Supabase Auth: email one-time code, account settings
+- [ ] Vercel environment variables for the linked Supabase project
 - [ ] Seton SSO integration (blocked on identity provider decision)
 - [ ] Email notifications (Phase 1 infrastructure placeholder)
 
@@ -37,7 +37,7 @@ All product, design, and engineering decisions must follow:
 ```bash
 npm install
 cp .env.example .env.local
-# Add Supabase URL and anon key from https://supabase.com/dashboard
+# Add Supabase URL and publishable key
 npm run dev
 ```
 
@@ -47,9 +47,15 @@ Without Supabase env vars, the app runs in **demo mode** with placeholder data f
 
 ## Supabase setup
 
-1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard) (or use the Supabase MCP integration).
-2. Copy project URL and anon key to `.env.local`.
-3. Apply migrations:
+1. Copy `.env.example` to `.env.local`.
+2. Add the project URL and publishable (or legacy anon) key.
+3. In the Supabase dashboard, confirm:
+   - Authentication → Providers → Email is enabled
+   - Confirm email is enabled
+   - Authentication → Email Templates → Magic Link is a 6-digit `{{ .Token }}` only (no confirmation link)
+   - URL configuration Site URL is the app origin (for local: `http://localhost:3000`)
+   - Redirect URLs include `http://localhost:3000/auth/callback` and `http://localhost:3000/auth/confirm``
+4. Apply migrations if this is a new database:
 
 ```bash
 npx supabase link --project-ref YOUR_PROJECT_REF
@@ -57,6 +63,8 @@ npx supabase db push
 ```
 
 Migrations live in `supabase/migrations/`.
+
+Phase 1 uses email one-time codes (6 digits). Seton SSO is deferred until the identity provider is confirmed (masterplan open decision #4). Verified `setonschool.net` users receive requester access automatically; they still need manager approval for reservations.
 
 ## Vercel deployment
 
@@ -81,10 +89,11 @@ Space managers, capacities, and official names must be confirmed before producti
 
 ## Assumptions (verify before launch)
 
-1. Seton email domain: `setonschool.net` (stored in `approved_domains` table)
-2. Tech Admin email: to be confirmed
-3. Identity provider: Google Workspace or Microsoft Entra ID — not yet integrated
+1. Seton email domain: `setonschool.net` (grant requester access on verified signup; not a separate table)
+2. Tech Admin email: Phase 1 bootstrap `semperjoey@gmail.com`; production address still to be confirmed
+3. Identity provider: email one-time code via Supabase Auth for Phase 1; Google Workspace or Microsoft Entra ID still to be confirmed for production SSO
 4. Pending-hold policy: first submitted request creates a Pending hold (masterplan §15.3)
+5. Phase 1 database: four tables only (users, rooms, reservation_requests, reservations_confirmed)
 
 ## Project structure
 

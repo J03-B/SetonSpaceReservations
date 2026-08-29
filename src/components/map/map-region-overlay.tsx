@@ -1,19 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type RefObject, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject, type MouseEvent as ReactMouseEvent } from "react";
 import type { MapPoint, MapRegion } from "@/lib/map/map-config";
 import type { PublicStatus } from "@/lib/domain/statuses";
 import {
   FLOOR_STATUS_COLORS,
   MAP_STATUS_COLORS,
+  fillMatchingStroke,
   type MapDisplayStatus,
 } from "@/lib/map/status-colors";
-import { clientToPercent } from "@/lib/map/editor-utils";
+import { clientToPercent, clientToSnappedImagePercent } from "@/lib/map/editor-utils";
+import { MapPixelLoupe } from "@/components/map/map-pixel-loupe";
 import {
   FLOOR_DIMMED_OPACITY,
+  FLOOR_HOVER_MS,
+  FLOOR_LABEL_DIMMED_SCALE,
   FLOOR_LABEL_HOVER_SCALE,
   FLOOR_LABEL_SELECTED_SCALE,
-  FLOOR_ROOM_FOCUS_MS,
 } from "@/lib/map/floor-room-camera";
 import {
   lerpPolygonPoints,
@@ -33,16 +36,22 @@ const CAMPUS_MOBILE_HIT_OUTSET = 0.75;
 const FLOOR_MOBILE_HIT_OUTSET = 0.55;
 /** Integer screen-px strokes so scaled maps do not alias to mixed 1px/2px edges. */
 const FLOOR_STROKE_REST = 2;
-const FLOOR_STROKE_HOVER = 3;
-const FLOOR_STROKE_SELECTED = 4;
+const FLOOR_STROKE_HOVER = 6;
+const FLOOR_STROKE_SELECTED = 7;
+const INACTIVE_LABEL_SCALE = 0.5;
+export const INACTIVE_REGION_COLORS = {
+  fill: "transparent",
+  stroke: "transparent",
+} as const;
 const CAMPUS_STROKE_REST = 2;
 const CAMPUS_STROKE_ACTIVE = 3;
 
 function PolygonWithSmoothStroke({
   points,
   fill,
-  fillOpacity,
+  fillOpacity = 1,
   stroke,
+  strokeOpacity = 1,
   strokeWidth,
   className,
 }: {
@@ -50,6 +59,7 @@ function PolygonWithSmoothStroke({
   fill: string;
   fillOpacity?: number;
   stroke: string;
+  strokeOpacity?: number;
   strokeWidth: number;
   className?: string;
 }) {
@@ -60,25 +70,34 @@ function PolygonWithSmoothStroke({
         fill={fill}
         fillOpacity={fillOpacity}
         stroke={stroke}
-        strokeOpacity={0.28}
+        strokeOpacity={0.28 * strokeOpacity}
         strokeWidth={strokeWidth + 2}
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
         paintOrder="fill stroke"
         shapeRendering="geometricPrecision"
-        className={className}
+        className={cn(
+          "transition-[stroke-width] ease-out motion-reduce:transition-none",
+          className,
+        )}
+        style={{ transitionDuration: `${FLOOR_HOVER_MS}ms` }}
       />
       <polygon
         points={points}
         fill="none"
         stroke={stroke}
+        strokeOpacity={strokeOpacity}
         strokeWidth={strokeWidth}
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
         shapeRendering="geometricPrecision"
-        className={className}
+        className={cn(
+          "transition-[stroke-width] ease-out motion-reduce:transition-none",
+          className,
+        )}
+        style={{ transitionDuration: `${FLOOR_HOVER_MS}ms` }}
       />
     </>
   );
@@ -89,6 +108,7 @@ function CampusBuildingPolygon({
   selected,
   hovered,
   mobileMode = false,
+  interactive = true,
   onClick,
   onHoverChange,
 }: {
@@ -96,6 +116,7 @@ function CampusBuildingPolygon({
   selected: boolean;
   hovered: boolean;
   mobileMode?: boolean;
+  interactive?: boolean;
   onClick?: () => void;
   onHoverChange?: (hovering: boolean) => void;
 }) {
@@ -131,8 +152,8 @@ function CampusBuildingPolygon({
   );
 
   useEffect(() => {
-    setTargetProgress(hovered || selected ? 1 : 0);
-  }, [hovered, selected, setTargetProgress]);
+    setTargetProgress(interactive && (hovered || selected) ? 1 : 0);
+  }, [hovered, selected, interactive, setTargetProgress]);
 
   useEffect(
     () => () => {
@@ -153,6 +174,10 @@ function CampusBuildingPolygon({
   const setHovered = (next: boolean) => {
     onHoverChange?.(next);
   };
+
+  if (!interactive) {
+    return <g className="pointer-events-none" />;
+  }
 
   return (
     <g
@@ -199,6 +224,7 @@ function FloorRoomPolygon({
   hovered,
   dimmed = false,
   mobileMode = false,
+  interactive = true,
   onClick,
   onHoverChange,
 }: {
@@ -208,6 +234,7 @@ function FloorRoomPolygon({
   hovered: boolean;
   dimmed?: boolean;
   mobileMode?: boolean;
+  interactive?: boolean;
   onClick?: () => void;
   onHoverChange?: (hovering: boolean) => void;
 }) {
@@ -221,6 +248,24 @@ function FloorRoomPolygon({
   const setHovered = (next: boolean) => {
     onHoverChange?.(next);
   };
+
+  const opacity = dimmed ? FLOOR_DIMMED_OPACITY : 1;
+  const stroke = interactive ? colors.stroke : "transparent";
+  const fill = interactive ? fillMatchingStroke(stroke) : "transparent";
+
+  if (!interactive) {
+    return (
+      <g className="pointer-events-none">
+        <PolygonWithSmoothStroke
+          points={points}
+          fill="transparent"
+          stroke="transparent"
+          strokeWidth={FLOOR_STROKE_REST}
+          className="pointer-events-none"
+        />
+      </g>
+    );
+  }
 
   return (
     <g
@@ -241,9 +286,10 @@ function FloorRoomPolygon({
     >
       <PolygonWithSmoothStroke
         points={points}
-        fill={colors.fill}
-        fillOpacity={dimmed ? FLOOR_DIMMED_OPACITY : 1}
-        stroke={selected ? "#facc15" : colors.stroke}
+        fill={fill}
+        fillOpacity={opacity}
+        stroke={stroke}
+        strokeOpacity={opacity}
         strokeWidth={
           selected
             ? FLOOR_STROKE_SELECTED
@@ -280,14 +326,17 @@ export function resolveRegionColors(
   }
   if (region.childMapId) {
     return variant === "floor"
-      ? { fill: "rgba(30, 77, 140, 0.12)", stroke: "#3b82f6" }
+      ? { fill: fillMatchingStroke("#3b82f6"), stroke: "#3b82f6" }
       : { fill: "rgba(30, 77, 140, 0.18)", stroke: "#1e4d8c" };
   }
   if (region.spaceSlug) {
     return palette.Available;
   }
   return variant === "floor"
-    ? { fill: "rgba(255, 255, 255, 0.06)", stroke: "rgba(255, 255, 255, 0.35)" }
+    ? {
+        fill: fillMatchingStroke("rgba(255, 255, 255, 1)", 0.06),
+        stroke: "rgba(255, 255, 255, 0.35)",
+      }
     : { fill: "rgba(30, 77, 140, 0.08)", stroke: "rgba(30, 77, 140, 0.45)" };
 }
 
@@ -303,6 +352,7 @@ interface MapRegionOverlayProps {
   hovered?: boolean;
   mobileMode?: boolean;
   dimmed?: boolean;
+  interactive?: boolean;
   onHoverChange?: (hovering: boolean) => void;
 }
 
@@ -318,6 +368,7 @@ export function MapRegionOverlay({
   sublabel,
   hovered = false,
   dimmed = false,
+  interactive = true,
   onHoverChange,
 }: MapRegionOverlayProps) {
   if (regionHasPolygon(region)) {
@@ -334,6 +385,7 @@ export function MapRegionOverlay({
           selected={selected}
           hovered={hovered}
           mobileMode={mobileMode}
+          interactive={interactive}
           onClick={onClick}
           onHoverChange={onHoverChange}
         />
@@ -344,11 +396,12 @@ export function MapRegionOverlay({
       return (
         <FloorRoomPolygon
           basePoints={region.points}
-          colors={colors}
+          colors={interactive ? colors : INACTIVE_REGION_COLORS}
           selected={selected}
           hovered={hovered}
           dimmed={dimmed}
           mobileMode={mobileMode}
+          interactive={interactive}
           onClick={onClick}
           onHoverChange={onHoverChange}
         />
@@ -364,15 +417,19 @@ export function MapRegionOverlay({
           strokeWidth={selected ? 0.55 : 0.4}
           vectorEffect="non-scaling-stroke"
           className={cn(
-            editMode ? "pointer-events-none" : "cursor-pointer",
-            !editMode && "hover:brightness-110",
+            editMode && (selected || !onClick)
+              ? "pointer-events-none"
+              : interactive
+                ? "cursor-pointer"
+                : "pointer-events-none",
+            !editMode && interactive && "hover:brightness-110",
           )}
           onClick={
-            editMode
+            !onClick
               ? undefined
               : (e) => {
                   e.stopPropagation();
-                  onClick?.();
+                  onClick();
                 }
           }
         />
@@ -400,6 +457,7 @@ export function MapRegionRectButton({
   selected = false,
   editMode = false,
   variant = "default",
+  interactive = true,
   onClick,
   label,
   sublabel,
@@ -410,9 +468,14 @@ export function MapRegionRectButton({
 
   if (editMode) {
     return (
-      <div
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.();
+        }}
         className={cn(
-          "pointer-events-none absolute border-2 border-dashed border-sky-400 bg-sky-400/20",
+          "absolute z-10 border-2 border-dashed border-sky-400 bg-sky-400/20 text-left",
           selected && "border-solid border-yellow-400 bg-yellow-400/25",
         )}
         style={{
@@ -421,27 +484,40 @@ export function MapRegionRectButton({
           width: `${region.width}%`,
           height: `${region.height}%`,
         }}
+        aria-label={ariaLabel ?? displayLabel}
       >
         <span className="absolute left-0 top-0 max-w-full truncate bg-sky-600 px-1 text-[10px] text-white">
           {displayLabel}
         </span>
-      </div>
+      </button>
     );
   }
 
   return (
     <button
       type="button"
+      disabled={!interactive}
       onClick={(e) => {
         e.stopPropagation();
+        if (!interactive) return;
         onClick?.();
       }}
       className={cn(
-        "absolute transition-all duration-200",
-        isFloor
-          ? "border-[6px] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-focus"
-          : "flex flex-col items-center justify-center border-2 hover:brightness-110 hover:scale-[1.02] focus-visible:scale-[1.02]",
-        selected && "ring-4 ring-focus ring-offset-1 ring-offset-surface-subtle",
+        "absolute",
+        interactive
+          ? "transition-all duration-200"
+          : "pointer-events-none cursor-default",
+        interactive && isFloor
+          ? "border-[6px] hover:border-[10px] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-focus"
+          : interactive
+            ? "flex flex-col items-center justify-center border-2 hover:brightness-110 hover:scale-[1.02] focus-visible:scale-[1.02]"
+            : isFloor
+              ? "border-[6px]"
+              : "flex flex-col items-center justify-center border-2",
+        selected &&
+          interactive &&
+          !isFloor &&
+          "ring-4 ring-focus ring-offset-1 ring-offset-surface-subtle",
       )}
       style={{
         left: `${region.x}%`,
@@ -455,7 +531,7 @@ export function MapRegionRectButton({
     >
       {isFloor ? (
         sublabel ? (
-          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
+          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-3 py-1 text-lg font-semibold text-white shadow-sm">
             {sublabel}
           </span>
         ) : null
@@ -482,6 +558,7 @@ export function MapRegionSvgLayer({
   editMode = false,
   variant = "default",
   mobileMode = false,
+  isRegionActive,
   onRegionClick,
   onHoveredRegionChange,
 }: {
@@ -491,6 +568,7 @@ export function MapRegionSvgLayer({
   editMode?: boolean;
   variant?: "default" | "campus" | "floor";
   mobileMode?: boolean;
+  isRegionActive?: (region: MapRegion) => boolean;
   onRegionClick?: (region: MapRegion) => void;
   onHoveredRegionChange?: (regionId: string | null) => void;
   getSublabel?: (region: MapRegion) => string | undefined;
@@ -544,12 +622,18 @@ export function MapRegionSvgLayer({
 
   return (
     <svg
-      className="pointer-events-none absolute inset-0 h-full w-full"
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      aria-hidden={editMode}
+      aria-hidden={editMode && !onRegionClick}
     >
-      <g className={editMode ? "pointer-events-none" : "pointer-events-auto"}>
+      <g
+        className={
+          editMode && !onRegionClick
+            ? "pointer-events-none"
+            : "pointer-events-auto"
+        }
+      >
         {polygonRegions.map((region) => {
           const groupId = regionHoverGroupId(region);
           const isHovered = (hoveredGroupCounts.get(groupId) ?? 0) > 0;
@@ -557,6 +641,7 @@ export function MapRegionSvgLayer({
           const isDimmed = Boolean(
             selectedRegionId && selectedRegionId !== region.id,
           );
+          const regionActive = editMode || (isRegionActive?.(region) ?? true);
 
           return (
             <MapRegionOverlay
@@ -569,10 +654,17 @@ export function MapRegionSvgLayer({
               variant={variant}
               mobileMode={mobileMode}
               hovered={isHovered}
-              onHoverChange={(active) =>
-                adjustGroupHover(groupId, active ? 1 : -1)
+              interactive={regionActive}
+              onHoverChange={
+                regionActive
+                  ? (active) => adjustGroupHover(groupId, active ? 1 : -1)
+                  : undefined
               }
-              onClick={() => onRegionClick?.(region)}
+              onClick={
+                regionActive && onRegionClick
+                  ? () => onRegionClick(region)
+                  : undefined
+              }
             />
           );
         })}
@@ -589,6 +681,7 @@ export function MapRegionLabelLayer({
   hoveredRegionId = null,
   selectedRegionId = null,
   floorLabels = false,
+  isRegionActive,
 }: {
   regions: MapRegion[];
   getSublabel?: (region: MapRegion) => string | undefined;
@@ -597,6 +690,7 @@ export function MapRegionLabelLayer({
   hoveredRegionId?: string | null;
   selectedRegionId?: string | null;
   floorLabels?: boolean;
+  isRegionActive?: (region: MapRegion) => boolean;
 }) {
   const labeledRegions = regions.filter((region) => !region.hideLabel);
   if (labeledRegions.length === 0) return null;
@@ -606,18 +700,25 @@ export function MapRegionLabelLayer({
       {labeledRegions.map((region) => {
         const anchor = regionLabelAnchor(region);
         const sublabel = getSublabel?.(region);
-        const isHovered = hoveredRegionId === region.id;
+        const isHovered =
+          hoveredRegionId === region.id ||
+          hoveredRegionId === regionHoverGroupId(region);
         const isSelected = selectedRegionId === region.id;
         const isDimmed = Boolean(
           selectedRegionId && selectedRegionId !== region.id,
         );
-        const labelScale = floorLabels
-          ? isSelected
-            ? FLOOR_LABEL_SELECTED_SCALE
-            : isHovered
-              ? FLOOR_LABEL_HOVER_SCALE
-              : 1
-          : 1;
+        const regionActive = isRegionActive?.(region) ?? true;
+        const labelScale = !regionActive
+          ? INACTIVE_LABEL_SCALE
+          : floorLabels
+            ? isSelected
+              ? FLOOR_LABEL_SELECTED_SCALE
+              : isDimmed
+                ? FLOOR_LABEL_DIMMED_SCALE
+                : isHovered
+                  ? FLOOR_LABEL_HOVER_SCALE
+                  : 1
+            : 1;
         const baseTransform = mapRotated
           ? "translate(-50%, -50%) rotate(-90deg)"
           : "translate(-50%, -50%)";
@@ -625,7 +726,6 @@ export function MapRegionLabelLayer({
           region.mapLabelLines && region.mapLabelLines.length > 0
             ? region.mapLabelLines
             : [region.label];
-        const campusLabel = !floorLabels;
 
         return (
           <div
@@ -638,25 +738,22 @@ export function MapRegionLabelLayer({
               left: `${anchor.x}%`,
               top: `${anchor.y}%`,
               transform: `${baseTransform} scale(${labelScale})`,
-              transitionProperty: floorLabels
+              transitionProperty: floorLabels && regionActive
                 ? "transform, opacity"
                 : "opacity",
-              transitionDuration: floorLabels
-                ? `${FLOOR_ROOM_FOCUS_MS}ms`
-                : "300ms",
+              transitionDuration:
+                floorLabels && regionActive
+                  ? `${FLOOR_HOVER_MS}ms`
+                  : "150ms",
               transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           >
             <span
               className={cn(
                 "rounded-lg bg-surface/94 font-semibold text-text-primary shadow-sm backdrop-blur-[1px]",
-                campusLabel
-                  ? mobileMode
-                    ? "max-w-[15rem] px-3 py-1.5 text-lg leading-tight"
-                    : "max-w-[24rem] px-4 py-2 text-[22px] leading-tight sm:text-2xl"
-                  : mobileMode
-                    ? "max-w-[7.5rem] px-1.5 py-0.5 text-[9px] leading-tight"
-                    : "max-w-[10.5rem] px-2 py-1 text-[11px] leading-snug sm:max-w-[12rem] sm:text-xs",
+                mobileMode
+                  ? "max-w-[15rem] px-3 py-1.5 text-lg leading-tight"
+                  : "max-w-[24rem] px-4 py-2 text-[22px] leading-tight sm:text-2xl",
                 labelLines.length === 1 && "whitespace-nowrap",
               )}
             >
@@ -682,81 +779,149 @@ export function PolygonVertexEditor({
   points,
   onPointsChange,
   mapLayerRef,
+  imgRef,
 }: {
   points: MapPoint[];
   onPointsChange: (points: MapPoint[]) => void;
   mapLayerRef: RefObject<HTMLDivElement | null>;
+  imgRef: RefObject<HTMLImageElement | null>;
 }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const pointsRef = useRef(points);
-  pointsRef.current = points;
+  const onPointsChangeRef = useRef(onPointsChange);
+
+  useLayoutEffect(() => {
+    pointsRef.current = points;
+    onPointsChangeRef.current = onPointsChange;
+  }, [points, onPointsChange]);
+
+  const snapClientPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const mapLayer = mapLayerRef.current;
+      if (!mapLayer) return null;
+      const mapRect = mapLayer.getBoundingClientRect();
+      const img = imgRef.current;
+      if (img?.naturalWidth && img.naturalHeight) {
+        return clientToSnappedImagePercent(
+          clientX,
+          clientY,
+          mapRect,
+          img.naturalWidth,
+          img.naturalHeight,
+        ).point;
+      }
+      return clientToPercent(clientX, clientY, mapRect);
+    },
+    [imgRef, mapLayerRef],
+  );
 
   useEffect(() => {
     if (dragIndex === null) return;
 
     const onMove = (e: PointerEvent) => {
-      const mapLayer = mapLayerRef.current;
-      if (!mapLayer) return;
-      const mapRect = mapLayer.getBoundingClientRect();
-      const percent = clientToPercent(e.clientX, e.clientY, mapRect);
-      onPointsChange(
+      e.preventDefault();
+      setPointer({ x: e.clientX, y: e.clientY });
+      const next = snapClientPoint(e.clientX, e.clientY);
+      if (!next) return;
+      onPointsChangeRef.current(
         pointsRef.current.map((point, index) =>
-          index === dragIndex ? percent : point,
+          index === dragIndex ? next : point,
         ),
       );
     };
 
-    const onUp = () => setDragIndex(null);
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+    const onUp = () => {
+      setDragIndex(null);
     };
-  }, [dragIndex, mapLayerRef, onPointsChange]);
+
+    window.addEventListener("pointermove", onMove, { capture: true });
+    window.addEventListener("pointerup", onUp, { capture: true });
+    window.addEventListener("pointercancel", onUp, { capture: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove, { capture: true });
+      window.removeEventListener("pointerup", onUp, { capture: true });
+      window.removeEventListener("pointercancel", onUp, { capture: true });
+    };
+  }, [dragIndex, snapClientPoint]);
 
   if (points.length < 3) return null;
 
+  const activeIndex = dragIndex ?? hoverIndex;
+  const focusPercent = activeIndex != null ? points[activeIndex] ?? null : null;
+  const loupeActive = focusPercent != null && pointer != null;
+
   return (
-    <svg
-      className="pointer-events-none absolute inset-0 z-30 h-full w-full"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      <polyline
-        points={polygonPointsAttr(points)}
-        fill="none"
-        stroke="#facc15"
-        strokeWidth={0.45}
-        vectorEffect="non-scaling-stroke"
-        strokeDasharray="1.2 0.8"
-      />
-      {points.map((point, index) => (
-        <circle
-          key={`vertex-${index}`}
-          cx={point.x}
-          cy={point.y}
-          r={1.35}
-          fill="#facc15"
-          stroke="#ffffff"
-          strokeWidth={0.35}
+    <>
+      <svg
+        className="pointer-events-none absolute inset-0 z-30 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <polyline
+          points={polygonPointsAttr(points)}
+          fill="none"
+          stroke="#facc15"
+          strokeWidth={2}
           vectorEffect="non-scaling-stroke"
-          className={cn(
-            "pointer-events-auto touch-none",
-            dragIndex === index ? "cursor-grabbing" : "cursor-grab",
-          )}
+          strokeDasharray="6 4"
+        />
+      </svg>
+      {points.map((point, index) => (
+        <button
+          key={`vertex-${index}`}
+          type="button"
+          data-map-vertex=""
+          aria-label={`Drag corner ${index + 1}`}
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setPointer({ x: e.clientX, y: e.clientY });
+            setHoverIndex(index);
             setDragIndex(index);
           }}
-        />
+          onClick={(e) => e.stopPropagation()}
+          onPointerEnter={(e) => {
+            setHoverIndex(index);
+            setPointer({ x: e.clientX, y: e.clientY });
+          }}
+          onPointerMove={(e) => {
+            if (dragIndex !== null) return;
+            setPointer({ x: e.clientX, y: e.clientY });
+          }}
+          onPointerLeave={() => {
+            if (dragIndex !== null) return;
+            setHoverIndex(null);
+          }}
+          className={cn(
+            "absolute z-50 flex size-8 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center",
+            dragIndex === index ? "cursor-grabbing" : "cursor-grab",
+          )}
+          style={{
+            left: `${point.x}%`,
+            top: `${point.y}%`,
+          }}
+        >
+          <span
+            className={cn(
+              "rounded-full border-2 border-white bg-amber-400 shadow-md",
+              dragIndex === index || hoverIndex === index ? "size-5" : "size-4",
+            )}
+          />
+        </button>
       ))}
-    </svg>
+      <MapPixelLoupe
+        visible={loupeActive}
+        clientX={pointer?.x ?? 0}
+        clientY={pointer?.y ?? 0}
+        focusPercent={focusPercent}
+        mapLayerRef={mapLayerRef}
+        imgRef={imgRef}
+      />
+    </>
   );
 }
 

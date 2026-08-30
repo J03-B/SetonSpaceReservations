@@ -60,6 +60,8 @@ export function snapDateToPlannerSlot(date: Date): Date {
 
 export type DateRangeHandle = "start" | "end";
 
+const SLOT_MS = 30 * 60 * 1000;
+
 /**
  * Move one endpoint to `day` while keeping the other endpoint fixed.
  * If the moved day crosses the other day, roles swap so the other date does not jump.
@@ -84,18 +86,72 @@ export function placeRangeHandle(
 }
 
 /**
+ * Keep the current duration and slide the whole range so `handle` lands on `day`.
+ */
+export function slideRangeToDay(
+  handle: DateRangeHandle,
+  day: Date,
+  rangeStart: Date,
+  rangeEnd: Date,
+): { start: Date; end: Date } {
+  const duration = Math.max(
+    SLOT_MS,
+    rangeEnd.getTime() - rangeStart.getTime(),
+  );
+  if (handle === "start") {
+    const start = applyMinutesToDay(day, minutesSinceMidnight(rangeStart));
+    return { start, end: new Date(start.getTime() + duration) };
+  }
+  const end = applyMinutesToDay(day, minutesSinceMidnight(rangeEnd));
+  return { start: new Date(end.getTime() - duration), end };
+}
+
+/**
+ * Date change for one endpoint. If the other date is still unlocked, it follows
+ * with the same duration. If it is locked, it stays put.
+ */
+export function setRangeDate(
+  handle: DateRangeHandle,
+  day: Date,
+  rangeStart: Date,
+  rangeEnd: Date,
+  otherLocked: boolean,
+): { start: Date; end: Date } {
+  if (!otherLocked) {
+    return slideRangeToDay(handle, day, rangeStart, rangeEnd);
+  }
+  const minutes =
+    handle === "start"
+      ? minutesSinceMidnight(rangeStart)
+      : minutesSinceMidnight(rangeEnd);
+  const other = handle === "start" ? rangeEnd : rangeStart;
+  const placed = placeRangeHandle(day, minutes, other);
+  return { start: placed.start, end: placed.end };
+}
+
+/**
  * Which range endpoint a calendar-day click should move.
- * Outside or between the current days: the closer endpoint.
- * Clicking a day that already has one endpoint: the other endpoint.
+ * An unlocked endpoint is preferred until it is set. Outside or between the
+ * current days: the closer endpoint. Clicking a day that already has one
+ * endpoint: the other endpoint.
  */
 export function pickDateRangeHandle(
   clickedDay: Date,
   rangeStart: Date,
   rangeEnd: Date,
+  lockedStart = false,
+  lockedEnd = false,
 ): DateRangeHandle | null {
   const click = startOfDay(clickedDay).getTime();
   const start = startOfDay(rangeStart).getTime();
   const end = startOfDay(rangeEnd).getTime();
+
+  if (lockedStart && !lockedEnd) {
+    return click === start ? null : "end";
+  }
+  if (lockedEnd && !lockedStart) {
+    return click === end ? null : "start";
+  }
 
   if (click === start && click === end) return null;
   if (click === start) return "end";

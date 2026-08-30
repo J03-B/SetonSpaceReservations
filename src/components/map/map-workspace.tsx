@@ -1074,17 +1074,17 @@ function RoomSchedulePanel({
         ) : null}
       </div>
 
-      <div className="shrink-0 px-5 pb-3 pt-1">
-        {requestPending ? (
-          <div
-            className="flex min-h-11 items-center justify-center rounded-md border border-status-pending/30 bg-status-pending-bg px-4 py-2"
-            role="status"
-          >
-            <StatusBadge status="Pending" />
-          </div>
-        ) : (
-          <>
-            {isSignedIn ? (
+      {requestPending || isSignedIn ? (
+        <div className="shrink-0 px-5 pb-3 pt-1">
+          {requestPending ? (
+            <div
+              className="flex min-h-11 items-center justify-center rounded-md border border-status-pending/30 bg-status-pending-bg px-4 py-2"
+              role="status"
+            >
+              <StatusBadge status="Pending" />
+            </div>
+          ) : (
+            <>
               <div className="flex min-w-0 flex-col items-center gap-1.5">
                 <label
                   htmlFor={`request-reason-${space.id}`}
@@ -1103,66 +1103,61 @@ function RoomSchedulePanel({
                   />
                 </div>
               </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => onRequest(description)}
-              disabled={
-                requestBusy || (isSignedIn && description.trim().length === 0)
-              }
-              aria-label={
-                requestBusy
-                  ? "Sending request"
-                  : isSignedIn && description.trim().length === 0
-                    ? "Please provide a reason for the space."
-                    : "Request this space"
-              }
-              className={cn(
-                "relative inline-flex min-h-11 w-full items-center justify-center rounded-md bg-action-primary px-4 py-2 text-sm font-medium text-text-inverse transition-opacity duration-300",
-                isSignedIn ? "mt-3" : null,
-                isSignedIn && description.trim().length === 0
-                  ? "cursor-not-allowed opacity-40"
-                  : "hover:bg-action-primary-hover",
-                requestBusy && "pointer-events-none opacity-70",
-              )}
-            >
-              {requestBusy ? (
-                "Sending request…"
-              ) : isSignedIn ? (
-                <span className="grid place-items-center text-center" aria-hidden>
-                  <span
-                    className={cn(
-                      "col-start-1 row-start-1 transition-opacity duration-300",
-                      description.trim().length > 0
-                        ? "opacity-0"
-                        : "opacity-100",
-                    )}
-                  >
-                    Please provide a reason for the space.
+              <button
+                type="button"
+                onClick={() => onRequest(description)}
+                disabled={requestBusy || description.trim().length === 0}
+                aria-label={
+                  requestBusy
+                    ? "Sending request"
+                    : description.trim().length === 0
+                      ? "Please provide a reason for the space."
+                      : "Request this space"
+                }
+                className={cn(
+                  "relative mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-action-primary px-4 py-2 text-sm font-medium text-text-inverse transition-opacity duration-300",
+                  description.trim().length === 0
+                    ? "cursor-not-allowed opacity-40"
+                    : "hover:bg-action-primary-hover",
+                  requestBusy && "pointer-events-none opacity-70",
+                )}
+              >
+                {requestBusy ? (
+                  "Sending request…"
+                ) : (
+                  <span className="grid place-items-center text-center" aria-hidden>
+                    <span
+                      className={cn(
+                        "col-start-1 row-start-1 transition-opacity duration-300",
+                        description.trim().length > 0
+                          ? "opacity-0"
+                          : "opacity-100",
+                      )}
+                    >
+                      Please provide a reason for the space.
+                    </span>
+                    <span
+                      className={cn(
+                        "col-start-1 row-start-1 transition-opacity duration-300",
+                        description.trim().length > 0
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    >
+                      Request this space
+                    </span>
                   </span>
-                  <span
-                    className={cn(
-                      "col-start-1 row-start-1 transition-opacity duration-300",
-                      description.trim().length > 0
-                        ? "opacity-100"
-                        : "opacity-0",
-                    )}
-                  >
-                    Request this space
-                  </span>
-                </span>
-              ) : (
-                "Request this space"
-              )}
-            </button>
-          </>
-        )}
-        {requestError ? (
-          <p className="mt-2 text-center text-sm text-status-danger" role="alert">
-            {requestError}
-          </p>
-        ) : null}
-      </div>
+                )}
+              </button>
+            </>
+          )}
+          {requestError ? (
+            <p className="mt-2 text-center text-sm text-status-danger" role="alert">
+              {requestError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

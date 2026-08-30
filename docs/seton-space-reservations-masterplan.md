@@ -2309,6 +2309,24 @@ Migration or Rollback: src/lib/auth/reservation-actions.ts
 Documents Updated: this master plan
 ```
 
+### Recorded decision: D-2026-08-29-range-date-snap
+
+```text
+Decision ID: D-2026-08-29-range-date-snap
+Date: 2026-08-29
+Owner: Product owner (chat request)
+Status: Approved
+Context: Picking a start date in December left the end date on today, so the calendar stretched across months and looked broken.
+Decision: Changing the start date moves the end date to that same day (times stay). Changing the end date also moves the start date to that day when start is more than 5 calendar days away. Nearby end-date changes (5 days or fewer) keep start, so December 12 can still become an 11–12 range. The month grid follows the selected range instead of stretching from today. Public views still show status and time only.
+Alternatives Considered: Keep the other date fixed; hard-cap every range at 5 days with no nearby exception.
+Security Impact: None. Request authorization stays server-side.
+Privacy Impact: None.
+Accessibility Impact: Start date and end date fields still have visible labels. The calendar still exposes day names.
+Operational Impact: None.
+Migration or Rollback: src/lib/availability/range-time.ts, src/components/map/availability-planner.tsx
+Documents Updated: this master plan
+```
+
 ---
 
 ## 37. AI Agent Operating Instructions

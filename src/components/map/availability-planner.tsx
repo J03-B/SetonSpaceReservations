@@ -4,10 +4,12 @@ import {
   addDays,
   format,
   isSameDay,
+  isSameMonth,
   startOfDay,
   startOfWeek,
 } from "date-fns";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -21,6 +23,8 @@ import {
   minutesSinceMidnight,
   pickDateRangeHandle,
   placeRangeHandle,
+  setRangeDate,
+  slideRangeToDay,
 } from "@/lib/availability/range-time";
 import {
   PlannerDatePicker,
@@ -30,38 +34,46 @@ import { cn } from "@/lib/utils";
 
 const VISIBLE_RADIUS = 3;
 const DRAG_THRESHOLD_PX = 3;
-const MAX_WEEK_ROWS = 6;
+const VISIBLE_WEEK_ROWS = 4;
+const MAX_WEEK_ROWS = 16;
 const POINTER_BLEND = 0.22;
-const EXPAND_PULL_START_PX = 52;
-const EXPAND_ROW_FRACTION = 0.95;
+const EXPAND_BEYOND_PX = 10;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 interface DragViewportHint {
-  focusDay: Date | null;
   expandUpWeeks: number;
   expandDownWeeks: number;
 }
 
+interface FrozenWeekWindow {
+  firstWeekStartMs: number;
+  lastWeekStartMs: number;
+}
+
 function computeCalendarWeeks(
-  today: Date,
   rangeStart: Date,
   rangeEnd: Date,
   dragHint?: DragViewportHint | null,
+  frozenWeeks?: FrozenWeekWindow | null,
 ): Date[][] {
-  const lo = startOfDay(
-    rangeStart.getTime() <= rangeEnd.getTime() ? rangeStart : rangeEnd,
-  );
-  const hi = startOfDay(
-    rangeStart.getTime() <= rangeEnd.getTime() ? rangeEnd : rangeStart,
-  );
-  const contextLo = addDays(startOfDay(today), -VISIBLE_RADIUS);
-  const contextHi = addDays(startOfDay(today), VISIBLE_RADIUS);
+  let firstWeekStart: Date;
+  let lastWeekStart: Date;
 
-  const firstDay = lo < contextLo ? lo : contextLo;
-  const lastDay = hi > contextHi ? hi : contextHi;
-
-  let firstWeekStart = startOfWeek(firstDay, { weekStartsOn: 0 });
-  let lastWeekStart = startOfWeek(lastDay, { weekStartsOn: 0 });
+  if (frozenWeeks) {
+    firstWeekStart = new Date(frozenWeeks.firstWeekStartMs);
+    lastWeekStart = new Date(frozenWeeks.lastWeekStartMs);
+  } else {
+    const lo = startOfDay(
+      rangeStart.getTime() <= rangeEnd.getTime() ? rangeStart : rangeEnd,
+    );
+    const hi = startOfDay(
+      rangeStart.getTime() <= rangeEnd.getTime() ? rangeEnd : rangeStart,
+    );
+    const firstDay = addDays(lo, -VISIBLE_RADIUS);
+    const lastDay = addDays(hi, VISIBLE_RADIUS);
+    firstWeekStart = startOfWeek(firstDay, { weekStartsOn: 0 });
+    lastWeekStart = startOfWeek(lastDay, { weekStartsOn: 0 });
+  }
 
   if (dragHint?.expandUpWeeks) {
     firstWeekStart = addDays(firstWeekStart, -7);
@@ -80,6 +92,21 @@ function computeCalendarWeeks(
   }
 
   return weeks;
+}
+
+function MonthBanner({ month }: { month: Date }) {
+  return (
+    <div
+      className="flex items-center gap-2 py-1"
+      aria-label={format(month, "MMMM yyyy")}
+    >
+      <span className="h-px min-w-3 flex-1 bg-border" />
+      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+        {format(month, "MMMM yyyy")}
+      </span>
+      <span className="h-px min-w-3 flex-1 bg-border" />
+    </div>
+  );
 }
 
 function weekRangeSegment(
@@ -108,6 +135,7 @@ function hitTestDay(
   clientY: number,
   gridEl: HTMLElement,
   weeks: Date[][],
+  viewportEl?: HTMLElement | null,
 ): Date | null {
   if (weeks.length === 0) return null;
 
@@ -116,7 +144,21 @@ function hitTestDay(
   );
   if (rows.length === 0) return null;
 
+  const view = viewportEl?.getBoundingClientRect();
+  const colForX = (row: HTMLElement) => {
+    const cells = row.querySelectorAll<HTMLElement>("[data-day-cell]");
+    for (let col = 0; col < cells.length; col++) {
+      if (clientX <= cells[col].getBoundingClientRect().right) return col;
+    }
+    return Math.max(0, cells.length - 1);
+  };
+
   for (let weekIndex = 0; weekIndex < rows.length; weekIndex++) {
+    const rowRect = rows[weekIndex].getBoundingClientRect();
+    if (view && (rowRect.bottom < view.top || rowRect.top > view.bottom)) {
+      continue;
+    }
+
     const cells = rows[weekIndex].querySelectorAll<HTMLElement>("[data-day-cell]");
     for (let col = 0; col < cells.length; col++) {
       const rect = cells[col].getBoundingClientRect();
@@ -131,15 +173,42 @@ function hitTestDay(
     }
   }
 
+  let nearestIndex = -1;
+  let nearestDist = Infinity;
+  for (let weekIndex = 0; weekIndex < rows.length; weekIndex++) {
+    const rowRect = rows[weekIndex].getBoundingClientRect();
+    if (view && (rowRect.bottom < view.top || rowRect.top > view.bottom)) {
+      continue;
+    }
+    const midY = (rowRect.top + rowRect.bottom) / 2;
+    const dist = Math.abs(clientY - midY);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestIndex = weekIndex;
+    }
+  }
+  if (nearestIndex >= 0) {
+    return weeks[nearestIndex]?.[colForX(rows[nearestIndex])] ?? null;
+  }
+
+  const visibleIndexes = rows.flatMap((row, index) => {
+    if (!view) return [index];
+    const rect = row.getBoundingClientRect();
+    return rect.bottom > view.top && rect.top < view.bottom ? [index] : [];
+  });
+  const firstVisible = rows[visibleIndexes[0] ?? 0];
+  const lastVisibleIndex = visibleIndexes[visibleIndexes.length - 1] ?? rows.length - 1;
+  const lastVisible = rows[lastVisibleIndex];
+
+  if (view && clientY < view.top) {
+    return weeks[visibleIndexes[0] ?? 0]?.[colForX(firstVisible)] ?? null;
+  }
+  if (view && clientY > view.bottom) {
+    return weeks[lastVisibleIndex]?.[colForX(lastVisible)] ?? null;
+  }
+
   const firstRect = rows[0].getBoundingClientRect();
   const lastRect = rows[rows.length - 1]?.getBoundingClientRect();
-  const colForX = (row: HTMLElement) => {
-    const cells = row.querySelectorAll<HTMLElement>("[data-day-cell]");
-    for (let col = 0; col < cells.length; col++) {
-      if (clientX <= cells[col].getBoundingClientRect().right) return col;
-    }
-    return Math.max(0, cells.length - 1);
-  };
 
   if (clientY < firstRect.top) {
     return weeks[0]?.[colForX(rows[0])] ?? null;
@@ -179,34 +248,18 @@ function getDayCellMetrics(
   return null;
 }
 
-function findWeekKey(day: Date, weeks: Date[][]): string | null {
-  for (const week of weeks) {
-    if (week.some((d) => isSameDay(d, day))) {
-      return week[0].toISOString();
-    }
-  }
-  return null;
-}
-
-function computeExpandWeeks(
-  startY: number,
+function pointerExpandDirection(
   pointerY: number,
-  rowHeight: number,
   gridEl: HTMLElement,
-): { expandUpWeeks: number; expandDownWeeks: number } {
-  const dy = pointerY - startY;
-  const step = Math.max(rowHeight * EXPAND_ROW_FRACTION, EXPAND_PULL_START_PX);
+): "up" | "down" | null {
   const rows = gridEl.querySelectorAll<HTMLElement>("[data-week-row]");
-  const first = rows[0]?.getBoundingClientRect();
-  const last = rows[rows.length - 1]?.getBoundingClientRect();
+  if (rows.length === 0) return null;
 
-  const wantsDown = dy >= step && last && pointerY > last.top + rowHeight * 0.35;
-  const wantsUp = dy <= -step && first && pointerY < first.bottom - rowHeight * 0.35;
-
-  return {
-    expandUpWeeks: wantsUp ? 1 : 0,
-    expandDownWeeks: wantsDown ? 1 : 0,
-  };
+  const first = rows[0].getBoundingClientRect();
+  const last = rows[rows.length - 1].getBoundingClientRect();
+  if (pointerY > last.bottom + EXPAND_BEYOND_PX) return "down";
+  if (pointerY < first.top - EXPAND_BEYOND_PX) return "up";
+  return null;
 }
 
 function clockHandAngles(minutes: number): {
@@ -406,13 +459,17 @@ export function AvailabilityPlanner({
 
   const [draggingHandle, setDraggingHandle] = useState<DragHandle | null>(null);
   const [dragHint, setDragHint] = useState<DragViewportHint | null>(null);
+  const [lockedStart, setLockedStart] = useState(false);
+  const [lockedEnd, setLockedEnd] = useState(false);
   const [newWeekKeys, setNewWeekKeys] = useState<Set<string>>(new Set());
   const [newWeekDirection, setNewWeekDirection] = useState<
     Map<string, "up" | "down">
   >(new Map());
 
   const gridRef = useRef<HTMLDivElement>(null);
+  const weeksScrollRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
+  const scrollFocusMsRef = useRef<number | null>(null);
   const weeksRef = useRef<Date[][]>([]);
   const dragRef = useRef<{
     handle: DragHandle;
@@ -431,12 +488,12 @@ export function AvailabilityPlanner({
     rowHeight: number;
     expandUpLatched: boolean;
     expandDownLatched: boolean;
-    expandUpArmed: boolean;
-    expandDownArmed: boolean;
     minWeekStartMs: number;
     maxWeekStartMs: number;
-    baselineWeekKeys: Set<string>;
     moved: boolean;
+    otherLocked: boolean;
+    slideStartMs: number;
+    slideEndMs: number;
   } | null>(null);
   const rafRef = useRef<number | null>(null);
   const dragLoopRef = useRef<() => void>(() => {});
@@ -449,10 +506,17 @@ export function AvailabilityPlanner({
   const rangeLoDay = startDay <= endDay ? startDay : endDay;
   const rangeHiDay = startDay <= endDay ? endDay : startDay;
 
+  const dragFreezeRef = useRef<FrozenWeekWindow | null>(null);
+
   const weeks = useMemo(
     () =>
-      computeCalendarWeeks(today, rangeStart, rangeEnd, draggingHandle ? dragHint : null),
-    [today, rangeStart, rangeEnd, draggingHandle, dragHint],
+      computeCalendarWeeks(
+        rangeStart,
+        rangeEnd,
+        draggingHandle ? dragHint : null,
+        draggingHandle ? dragFreezeRef.current : null,
+      ),
+    [rangeStart, rangeEnd, draggingHandle, dragHint],
   );
 
   useLayoutEffect(() => {
@@ -487,6 +551,85 @@ export function AvailabilityPlanner({
     prevWeekKeysRef.current = new Set(currentKeys);
   }, [weeks]);
 
+  useLayoutEffect(() => {
+    const scroll = weeksScrollRef.current;
+    if (!scroll) return;
+
+    const applyMaxHeight = () => {
+      const list = scroll.querySelector<HTMLElement>("[data-weeks-list]");
+      const rows = list?.querySelectorAll<HTMLElement>("[data-week-row]");
+      if (!list || !rows?.length) return;
+
+      if (weeks.length <= VISIBLE_WEEK_ROWS) {
+        scroll.style.maxHeight = "";
+        return;
+      }
+
+      const lastVisible = rows[VISIBLE_WEEK_ROWS - 1] ?? rows[rows.length - 1];
+      scroll.style.maxHeight = `${
+        lastVisible.offsetTop + lastVisible.offsetHeight
+      }px`;
+    };
+
+    applyMaxHeight();
+    const frame = requestAnimationFrame(applyMaxHeight);
+    const observer = new ResizeObserver(applyMaxHeight);
+    observer.observe(scroll);
+    const list = scroll.querySelector("[data-weeks-list]");
+    if (list) observer.observe(list);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [weeks.length]);
+
+  useLayoutEffect(() => {
+    if (!draggingHandle) return;
+    const drag = dragRef.current;
+    const scroll = weeksScrollRef.current;
+    const grid = gridRef.current;
+    if (!drag || !scroll || !grid) return;
+
+    const rows = grid.querySelectorAll<HTMLElement>("[data-week-row]");
+    const last = rows[rows.length - 1];
+    if (!last) return;
+
+    if (drag.expandDownLatched) {
+      scroll.scrollTop = Math.max(
+        0,
+        last.offsetTop + last.offsetHeight - scroll.clientHeight,
+      );
+    } else if (drag.expandUpLatched) {
+      scroll.scrollTop = 0;
+    }
+  }, [draggingHandle, dragHint, weeks.length]);
+
+  useLayoutEffect(() => {
+    if (draggingHandle) return;
+    const scroll = weeksScrollRef.current;
+    const grid = gridRef.current;
+    if (!scroll || !grid || weeks.length <= VISIBLE_WEEK_ROWS) return;
+
+    const targetMs = scrollFocusMsRef.current;
+    if (targetMs == null) return;
+    scrollFocusMsRef.current = null;
+
+    const rows = Array.from(grid.querySelectorAll<HTMLElement>("[data-week-row]"));
+    const rowIndex = weeks.findIndex((weekDays) =>
+      weekDays.some((day) => startOfDay(day).getTime() === targetMs),
+    );
+    const row = rows[rowIndex];
+    if (!row) return;
+
+    const scrollRect = scroll.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    if (rowRect.top < scrollRect.top) {
+      scroll.scrollTop -= scrollRect.top - rowRect.top;
+    } else if (rowRect.bottom > scrollRect.bottom) {
+      scroll.scrollTop += rowRect.bottom - scrollRect.bottom;
+    }
+  }, [draggingHandle, weeks]);
+
   const measureGrid = useCallback(() => {
     const grid = gridRef.current;
     if (!grid || weeks.length === 0) {
@@ -504,22 +647,54 @@ export function AvailabilityPlanner({
     (handle: DragHandle, day: Date, minutes: number) => {
       const other = handle === "start" ? rangeEnd : rangeStart;
       const placed = placeRangeHandle(day, minutes, other);
+      scrollFocusMsRef.current = startOfDay(day).getTime();
       onRangeChange(placed.start, placed.end);
     },
     [onRangeChange, rangeEnd, rangeStart],
   );
 
-  const onCalendarDaySelect = useCallback(
-    (day: Date) => {
-      const handle = pickDateRangeHandle(day, rangeStart, rangeEnd);
-      if (!handle) return;
-      commitRange(
+  const lockHandle = useCallback((handle: DragHandle) => {
+    if (handle === "start") setLockedStart(true);
+    else setLockedEnd(true);
+  }, []);
+
+  const commitDate = useCallback(
+    (handle: DragHandle, day: Date) => {
+      const otherLocked = handle === "start" ? lockedEnd : lockedStart;
+      const next = setRangeDate(
         handle,
         day,
-        handle === "start" ? startMinutes : endMinutes,
+        rangeStart,
+        rangeEnd,
+        otherLocked,
       );
+      lockHandle(handle);
+      scrollFocusMsRef.current = startOfDay(day).getTime();
+      onRangeChange(next.start, next.end);
     },
-    [commitRange, endMinutes, rangeEnd, rangeStart, startMinutes],
+    [
+      lockHandle,
+      lockedEnd,
+      lockedStart,
+      onRangeChange,
+      rangeEnd,
+      rangeStart,
+    ],
+  );
+
+  const onCalendarDaySelect = useCallback(
+    (day: Date) => {
+      const handle = pickDateRangeHandle(
+        day,
+        rangeStart,
+        rangeEnd,
+        lockedStart,
+        lockedEnd,
+      );
+      if (!handle) return;
+      commitDate(handle, day);
+    },
+    [commitDate, lockedEnd, lockedStart, rangeEnd, rangeStart],
   );
 
   const updateGhostPosition = useCallback((snappedDay: Date) => {
@@ -558,6 +733,7 @@ export function AvailabilityPlanner({
       rafRef.current = null;
     }
     dragRef.current = null;
+    dragFreezeRef.current = null;
     setDraggingHandle(null);
     setDragHint(null);
   }, []);
@@ -568,7 +744,13 @@ export function AvailabilityPlanner({
     if (!drag || !grid) return;
 
     const currentWeeks = weeksRef.current;
-    const hit = hitTestDay(drag.pointerX, drag.pointerY, grid, currentWeeks);
+    const hit = hitTestDay(
+      drag.pointerX,
+      drag.pointerY,
+      grid,
+      currentWeeks,
+      weeksScrollRef.current,
+    );
     let snappedDay = hit ?? new Date(drag.snappedDayMs);
     let snappedWeekStartMs = startOfWeek(snappedDay, { weekStartsOn: 0 }).getTime();
 
@@ -588,60 +770,46 @@ export function AvailabilityPlanner({
 
     const snappedMs = startOfDay(snappedDay).getTime();
 
-    const viewport = computeExpandWeeks(
-      drag.startY,
-      drag.pointerY,
-      drag.rowHeight,
-      grid,
-    );
-
-    const snappedWeekKey = findWeekKey(snappedDay, currentWeeks);
-    if (snappedWeekKey && drag.baselineWeekKeys.has(snappedWeekKey)) {
-      drag.expandUpArmed = true;
-      drag.expandDownArmed = true;
+    if (
+      !drag.expandUpLatched &&
+      !drag.expandDownLatched &&
+      currentWeeks.length < MAX_WEEK_ROWS
+    ) {
+      const direction = pointerExpandDirection(drag.pointerY, grid);
+      if (direction === "up") {
+        drag.expandUpLatched = true;
+        setDragHint({ expandUpWeeks: 1, expandDownWeeks: 0 });
+      } else if (direction === "down") {
+        drag.expandDownLatched = true;
+        setDragHint({ expandUpWeeks: 0, expandDownWeeks: 1 });
+      }
     }
-
-    if (viewport.expandUpWeeks && drag.expandUpArmed && !drag.expandUpLatched) {
-      drag.expandUpLatched = true;
-      drag.expandUpArmed = false;
-      drag.baselineWeekKeys = new Set(
-        currentWeeks.map((week) => week[0].toISOString()),
-      );
-      drag.startY = drag.pointerY;
-    }
-
-    if (viewport.expandDownWeeks && drag.expandDownArmed && !drag.expandDownLatched) {
-      drag.expandDownLatched = true;
-      drag.expandDownArmed = false;
-      drag.baselineWeekKeys = new Set(
-        currentWeeks.map((week) => week[0].toISOString()),
-      );
-      drag.startY = drag.pointerY;
-    }
-
-    setDragHint({
-      focusDay: snappedDay,
-      expandUpWeeks:
-        drag.expandUpLatched && snappedWeekStartMs > drag.minWeekStartMs ? 1 : 0,
-      expandDownWeeks:
-        drag.expandDownLatched && snappedWeekStartMs < drag.maxWeekStartMs ? 1 : 0,
-    });
 
     if (snappedMs !== drag.snappedDayMs) {
       drag.snappedDayMs = snappedMs;
-      const other = applyMinutesToDay(
-        new Date(drag.anchorDayMs),
-        drag.anchorMinutes,
-      );
-      const placed = placeRangeHandle(
-        snappedDay,
-        drag.originMinutes,
-        other,
-      );
-      onRangeChange(placed.start, placed.end);
-      if (placed.handle !== drag.handle) {
-        drag.handle = placed.handle;
-        setDraggingHandle(placed.handle);
+      if (drag.otherLocked) {
+        const other = applyMinutesToDay(
+          new Date(drag.anchorDayMs),
+          drag.anchorMinutes,
+        );
+        const placed = placeRangeHandle(
+          snappedDay,
+          drag.originMinutes,
+          other,
+        );
+        onRangeChange(placed.start, placed.end);
+        if (placed.handle !== drag.handle) {
+          drag.handle = placed.handle;
+          setDraggingHandle(placed.handle);
+        }
+      } else {
+        const next = slideRangeToDay(
+          drag.handle,
+          snappedDay,
+          new Date(drag.slideStartMs),
+          new Date(drag.slideEndMs),
+        );
+        onRangeChange(next.start, next.end);
       }
     }
 
@@ -670,6 +838,10 @@ export function AvailabilityPlanner({
       const originWeekStart = startOfWeek(originDate, { weekStartsOn: 0 });
       const firstWeekStart = firstWeek?.[0] ?? originWeekStart;
       const lastWeekStart = lastWeek?.[0] ?? originWeekStart;
+      dragFreezeRef.current = {
+        firstWeekStartMs: firstWeekStart.getTime(),
+        lastWeekStartMs: lastWeekStart.getTime(),
+      };
       let visualX = 0;
       let visualY = 0;
 
@@ -698,14 +870,12 @@ export function AvailabilityPlanner({
         rowHeight,
         expandUpLatched: false,
         expandDownLatched: false,
-        expandUpArmed: true,
-        expandDownArmed: true,
         minWeekStartMs: addDays(firstWeekStart, -7).getTime(),
         maxWeekStartMs: addDays(lastWeekStart, 7).getTime(),
-        baselineWeekKeys: new Set(
-          visibleWeeks.map((week) => week[0].toISOString()),
-        ),
         moved: false,
+        otherLocked: handle === "start" ? lockedEnd : lockedStart,
+        slideStartMs: rangeStart.getTime(),
+        slideEndMs: rangeEnd.getTime(),
       };
 
       const onMove = (ev: PointerEvent) => {
@@ -719,9 +889,9 @@ export function AvailabilityPlanner({
           drag.moved = true;
           drag.pointerX = ev.clientX;
           drag.pointerY = ev.clientY;
+          lockHandle(drag.handle);
           setDraggingHandle(drag.handle);
           setDragHint({
-            focusDay: new Date(drag.originDayMs),
             expandUpWeeks: 0,
             expandDownWeeks: 0,
           });
@@ -755,8 +925,13 @@ export function AvailabilityPlanner({
       endDay,
       endMinutes,
       finishDrag,
+      lockHandle,
+      lockedEnd,
+      lockedStart,
       measureGrid,
       onCalendarDaySelect,
+      rangeEnd,
+      rangeStart,
       startDay,
       startMinutes,
     ],
@@ -765,8 +940,7 @@ export function AvailabilityPlanner({
   useLayoutEffect(() => {
     if (!draggingHandle) return;
     const drag = dragRef.current;
-    if (!drag) return;
-    drag.ghostPlaced = false;
+    if (!drag || drag.ghostPlaced) return;
     updateGhostPosition(new Date(drag.snappedDayMs));
   }, [draggingHandle, updateGhostPosition]);
 
@@ -774,6 +948,8 @@ export function AvailabilityPlanner({
     const now = new Date();
     const startM = clampMinutes(minutesSinceMidnight(now));
     const endM = clampMinutes(startM + 120);
+    setLockedStart(false);
+    setLockedEnd(false);
     onRangeChange(
       applyMinutesToDay(today, startM),
       applyMinutesToDay(today, endM),
@@ -791,7 +967,7 @@ export function AvailabilityPlanner({
   return (
     <section
       className={cn(
-        "rounded-xl border border-border bg-surface/97 p-5 shadow-lg backdrop-blur-sm",
+        "flex min-h-0 flex-col rounded-xl border border-border bg-surface/97 p-5 shadow-lg backdrop-blur-sm",
         className,
       )}
       aria-labelledby="availability-planner-heading"
@@ -813,40 +989,13 @@ export function AvailabilityPlanner({
       </div>
 
       <div
-        ref={gridRef}
         className={cn(
-          "relative select-none touch-none",
+          "flex min-h-0 min-w-0 flex-col select-none touch-none",
           draggingHandle && "cursor-grabbing",
         )}
       >
-        {draggingHandle ? (
-          <div
-            ref={ghostRef}
-            className="planner-drag-handle pointer-events-none absolute left-0 top-0 z-30 rounded-xl border-[3px] shadow-md"
-            aria-hidden="true"
-            style={{
-              borderColor: "var(--text-primary)",
-              backgroundColor: "rgba(30, 77, 140, 0.18)",
-            }}
-          >
-            {isSameDay(startDay, endDay) ? (
-              <ClockRange
-                startMinutes={startMinutes}
-                endMinutes={endMinutes}
-              />
-            ) : (
-              <ClockHands
-                minutes={
-                  dragRef.current?.originMinutes ??
-                  (draggingHandle === "start" ? startMinutes : endMinutes)
-                }
-              />
-            )}
-          </div>
-        ) : null}
-
         {weeks[0] ? (
-          <div className="mb-2 grid grid-cols-7 gap-1.5">
+          <div className="mb-2 grid w-full min-w-0 grid-cols-7 gap-1.5 px-1">
             {weeks[0].map((day) => (
               <span
                 key={day.toISOString()}
@@ -863,19 +1012,60 @@ export function AvailabilityPlanner({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-1.5">
-          {weeks.map((weekDays) => {
+        <div
+          ref={weeksScrollRef}
+          className="planner-weeks-scroll min-h-0 min-w-0 w-full"
+          aria-label="Calendar dates"
+        >
+          <div
+            ref={gridRef}
+            data-weeks-list
+            className="relative flex w-full min-w-0 flex-col gap-1.5 p-1"
+          >
+            {draggingHandle ? (
+              <div
+                ref={ghostRef}
+                className="planner-drag-handle pointer-events-none absolute left-0 top-0 z-30 rounded-xl border-[3px] shadow-md"
+                aria-hidden="true"
+                style={{
+                  borderColor: "var(--text-primary)",
+                  backgroundColor: "rgba(30, 77, 140, 0.18)",
+                }}
+              >
+                {isSameDay(startDay, endDay) ? (
+                  <ClockRange
+                    startMinutes={startMinutes}
+                    endMinutes={endMinutes}
+                  />
+                ) : (
+                  <ClockHands
+                    minutes={
+                      dragRef.current?.originMinutes ??
+                      (draggingHandle === "start" ? startMinutes : endMinutes)
+                    }
+                  />
+                )}
+              </div>
+            ) : null}
+
+            {weeks.map((weekDays, weekIndex) => {
             const weekKey = weekDays[0].toISOString();
             const segment = weekRangeSegment(weekDays, rangeLoDay, rangeHiDay);
-            const isNewRow = newWeekKeys.has(weekKey);
+            const isNewRow = !draggingHandle && newWeekKeys.has(weekKey);
             const enterDir = newWeekDirection.get(weekKey);
+            const previousSunday = weeks[weekIndex - 1]?.[0];
+            const showMonthBanner =
+              weekIndex === 0 ||
+              (previousSunday != null &&
+                !isSameMonth(weekDays[0], previousSunday));
 
             return (
+              <Fragment key={weekKey}>
+                {showMonthBanner ? <MonthBanner month={weekDays[0]} /> : null}
               <div
-                key={weekKey}
                 data-week-row
                 className={cn(
-                  "relative grid grid-cols-7 gap-1.5",
+                  "relative grid w-full min-w-0 grid-cols-7 gap-1.5",
                   isNewRow &&
                     enterDir === "up" &&
                     "planner-week-row-enter-up",
@@ -912,11 +1102,17 @@ export function AvailabilityPlanner({
                         : null;
                   const dragHandle =
                     isStart && !isEnd ? "start" : isEnd && !isStart ? "end" : null;
+                  const isMidWeekMonthStart =
+                    day.getDate() === 1 && day.getDay() !== 0;
 
                   return (
                     <div
                       key={day.toISOString()}
-                      className="relative z-[1] min-w-0"
+                      className={cn(
+                        "relative z-[1] min-w-0",
+                        isMidWeekMonthStart &&
+                          "border-l-2 border-border-strong pl-0.5",
+                      )}
                     >
                       <div
                         data-day-cell
@@ -952,19 +1148,32 @@ export function AvailabilityPlanner({
                             type="button"
                             onClick={() => onCalendarDaySelect(day)}
                             aria-label={
-                              pickDateRangeHandle(day, rangeStart, rangeEnd) ===
+                              pickDateRangeHandle(
+                                day,
+                                rangeStart,
+                                rangeEnd,
+                                lockedStart,
+                                lockedEnd,
+                              ) ===
                               "end"
                                 ? `Set end date to ${format(day, "MMMM d")}`
                                 : `Set start date to ${format(day, "MMMM d")}`
                             }
                             className={cn(
-                              "absolute inset-0 z-30 flex items-center justify-center rounded-xl text-lg font-bold",
+                              "absolute inset-0 z-30 flex flex-col items-center justify-center rounded-xl font-bold",
                               inRange && "text-action-primary",
                               isToday && !inRange && "text-action-primary",
                               !inRange && !isToday && "text-text-secondary",
                             )}
                           >
-                            {format(day, "d")}
+                            {isMidWeekMonthStart && !inRange ? (
+                              <span className="text-[0.55rem] font-semibold uppercase leading-none tracking-wide">
+                                {format(day, "MMM")}
+                              </span>
+                            ) : null}
+                            <span className="text-lg leading-none">
+                              {format(day, "d")}
+                            </span>
                           </button>
                         ) : null}
 
@@ -1002,16 +1211,18 @@ export function AvailabilityPlanner({
                   );
                 })}
               </div>
+              </Fragment>
             );
           })}
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4">
+      <div className="mt-5 grid shrink-0 grid-cols-2 gap-4">
         <RangeField label="Start date">
           <PlannerDatePicker
             value={rangeStart}
-            onChange={(day) => commitRange("start", day, startMinutes)}
+            onChange={(day) => commitDate("start", day)}
             displayClassName="text-base"
           />
         </RangeField>
@@ -1027,7 +1238,7 @@ export function AvailabilityPlanner({
         <RangeField label="End date">
           <PlannerDatePicker
             value={rangeEnd}
-            onChange={(day) => commitRange("end", day, endMinutes)}
+            onChange={(day) => commitDate("end", day)}
             displayClassName="text-base"
           />
         </RangeField>

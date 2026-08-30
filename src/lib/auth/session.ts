@@ -1,4 +1,7 @@
-import { isBootstrapAdminEmail } from "@/lib/auth/config";
+import {
+  isBootstrapAdminEmail,
+  isCampusManagerEmail,
+} from "@/lib/auth/config";
 import { readTempViewUserId } from "@/lib/auth/impersonation";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
@@ -39,8 +42,6 @@ type UserRow = {
   id: string;
   email: string;
   full_name: string | null;
-  phone: string | null;
-  organization: string | null;
   account_status: string | null;
   email_verified_at: string | null;
   access_level: string | null;
@@ -61,9 +62,10 @@ export function asAccessLevel(value: string | null | undefined): AccessLevel {
 export function accessLabelFor(
   accessLevel: AccessLevel,
   isTechAdmin: boolean,
+  isCampusManager = false,
 ): AccessLabel {
   if (isTechAdmin) return "Admin";
-  if (accessLevel === "manager") return "Manager";
+  if (accessLevel === "manager" || isCampusManager) return "Manager";
   if (accessLevel === "trusted") return "Trusted User";
   if (accessLevel === "requester") return "User";
   return "Guest";
@@ -84,13 +86,20 @@ function toSessionUser(
   impersonation?: { realAdminEmail: string },
 ): SessionUser {
   const email = row.email;
-  const accessLevel = asAccessLevel(row.access_level);
+  const storedAccess = asAccessLevel(row.access_level);
   const isTechAdmin =
-    accessLevel === "tech_admin" || isBootstrapAdminEmail(email);
-  const isManager = accessLevel === "manager" || isTechAdmin;
+    storedAccess === "tech_admin" || isBootstrapAdminEmail(email);
+  const isCampusManager = isCampusManagerEmail(email);
+  const isManager = storedAccess === "manager" || isTechAdmin || isCampusManager;
+  const accessLevel: AccessLevel =
+    isTechAdmin
+      ? "tech_admin"
+      : isManager && storedAccess === "none"
+        ? "manager"
+        : storedAccess;
   const accountGroup: AccountGroup = isTechAdmin
     ? "Admin"
-    : accessLevel === "manager"
+    : isManager
       ? "Manager"
       : "User";
 
@@ -99,12 +108,12 @@ function toSessionUser(
     email,
     emailVerified,
     fullName: row.full_name ?? email ?? "Account",
-    phone: row.phone ?? null,
-    organization: row.organization ?? null,
+    phone: null,
+    organization: null,
     accountStatus:
       (row.account_status as AccountStatus | undefined) ?? "active",
     accessLevel,
-    accessLabel: accessLabelFor(accessLevel, isTechAdmin),
+    accessLabel: accessLabelFor(storedAccess, isTechAdmin, isCampusManager),
     accountGroup,
     isRequester: canSubmitRequests(accessLevel, isTechAdmin),
     isManager,
@@ -115,7 +124,7 @@ function toSessionUser(
 }
 
 const USER_COLUMNS =
-  "id, email, full_name, phone, organization, account_status, email_verified_at, access_level";
+  "id, email, full_name, account_status, email_verified_at, access_level";
 
 async function loadAuthProfile() {
   if (!isSupabaseConfigured()) {
@@ -146,11 +155,11 @@ async function loadAuthProfile() {
           id: user.id,
           email: user.email ?? "",
           full_name: user.email ?? "Account",
-          phone: null,
-          organization: null,
           account_status: "active",
           email_verified_at: user.email_confirmed_at ?? null,
-          access_level: "none",
+          access_level: isCampusManagerEmail(user.email ?? "")
+            ? "manager"
+            : "none",
         },
         Boolean(user.email_confirmed_at),
       ),

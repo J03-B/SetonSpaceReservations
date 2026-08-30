@@ -1,6 +1,6 @@
-import { addDays, startOfDay, endOfDay } from "date-fns";
 import { MapWorkspace } from "@/components/map/map-workspace";
 import { getPublicAvailability } from "@/lib/data/availability";
+import { getOwnOccupancyRanges } from "@/lib/data/own-pending";
 import { getPublicSpaces } from "@/lib/data/spaces";
 import { getSessionUser } from "@/lib/auth/session";
 import { findRegionBySpaceSlug } from "@/lib/map/map-config";
@@ -25,10 +25,14 @@ export default async function HomePage({
       : "edit-building" in params
         ? "corpus-christi"
         : null;
-  const [spaces, session] = await Promise.all([
+  const [spaces, session, slots] = await Promise.all([
     getPublicSpaces(),
     getSessionUser(),
+    getPublicAvailability(),
   ]);
+  const ownOccupancy = session
+    ? await getOwnOccupancyRanges(session.id)
+    : [];
 
   const selectedSpace = spaces.find(
     (s) => s.slug === room && s.isActive,
@@ -37,14 +41,6 @@ export default async function HomePage({
     ? findRegionBySpaceSlug(selectedSpace.slug)
     : undefined;
 
-  const rangeStart = startOfDay(new Date());
-  const rangeEnd = endOfDay(addDays(new Date(), 14));
-
-  const slots = await getPublicAvailability({
-    start: rangeStart,
-    end: rangeEnd,
-  });
-
   return (
     <MapWorkspace
       spaces={spaces}
@@ -52,6 +48,7 @@ export default async function HomePage({
       isSignedIn={Boolean(session)}
       canRequest={session?.isRequester ?? false}
       isManager={session?.isManager ?? false}
+      ownOccupancy={ownOccupancy}
       initialSelectedSlug={selectedSpace?.slug}
       initialMapId={regionMatch?.mapId ?? buildingEditMode ?? undefined}
       campusEditMode={campusEditMode}

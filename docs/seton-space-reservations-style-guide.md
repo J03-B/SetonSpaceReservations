@@ -917,7 +917,7 @@ Do not show internal notes.
 
 ### 16.2 Subject patterns
 
-- `Reservation request submitted — Gym — Sep 12`
+- `Reservation submitted — Gym — Sep 12`
 - `Action required — Update your Faustina Hall request`
 - `Reservation approved — DMC — Sep 12`
 - `Reservation declined — Gym — Sep 12`
@@ -927,7 +927,7 @@ Do not show internal notes.
 
 ### 16.3 Email body rules
 
-- Keep the first paragraph useful.
+- Keep the first paragraph useful, or omit it when the heading and Status card are enough.
 - Include one primary action link.
 - Do not include internal notes.
 - Do not overuse branding.
@@ -935,6 +935,10 @@ Do not show internal notes.
 - Include the confirmation number for reservation messages.
 - Use plain-text fallback.
 - Avoid sensitive details in subject lines.
+- Reservation details use labeled cards in one layout: label above, then a container. Text inside every container is centered. A divider sits above Request ID. Request ID is one row: the label on the left, then a container that lines up with the other cards, with the ID centered in it.
+- Status is the only colored card when it appears: Pending (orange), Approved (green), or Declined (red). The manager request notice has no Status card. Space, When, Reason, Requester, Conflicts, decision stamps, Request ID, and Code stay the gray card.
+- Requester confirmation heading is Reservation submitted. Manager notice heading is New reservation request. Do not use add-on or updated-request wording in those emails.
+- Sign-in and sign-up: Code card, then the instruction under it. Color is never the only status signal.
 
 ### 16.4 In-app notification copy
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import type { ReactNode } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AuthMessage, Field, inputClassName } from "@/components/auth/form-fields";
 import {
   decideReservationRequestAction,
@@ -24,14 +26,14 @@ function Detail({
   children,
 }: {
   label: string;
-  children: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="text-center">
-      <dt className="text-xs font-semibold tracking-wide text-text-secondary uppercase">
+    <div className="flex items-start gap-2">
+      <dt className="w-12 shrink-0 pt-1.5 text-left text-xs font-semibold tracking-wide text-text-secondary uppercase">
         {label}
       </dt>
-      <dd className="mt-0.5 text-sm whitespace-pre-line text-text-primary">
+      <dd className="min-w-0 flex-1 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-left text-sm text-text-primary">
         {children}
       </dd>
     </div>
@@ -85,6 +87,38 @@ function ConflictIcon() {
   );
 }
 
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-5 w-5">
+      <path
+        d="M6 4h11l3 3v13H6V4Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 4v5h7V4M9 20v-6h6v6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ReturnIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-5 w-5">
+      <path
+        d="M9 15 3 9l6-6M3 9h11a5 5 0 0 1 0 10h-4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 function UndoIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-5 w-5">
@@ -133,16 +167,34 @@ function UndoButton({ reservationId }: { reservationId: string }) {
 function DecisionButtons({
   requestId,
   hasConflict,
+  initialDeclining = false,
 }: {
   requestId: string;
   hasConflict: boolean;
+  initialDeclining?: boolean;
 }) {
+  const router = useRouter();
   const [state, action, pending] = useActionState(
     decideReservationRequestAction,
     {},
   );
-  const [declining, setDeclining] = useState(false);
+  const [declining, setDeclining] = useState(initialDeclining);
   const reasonId = `decline-reason-${requestId}`;
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!declining) return;
+    reasonRef.current?.focus();
+    formRef.current?.scrollIntoView({ block: "center" });
+  }, [declining]);
+
+  function cancelDecline() {
+    setDeclining(false);
+    if (initialDeclining) {
+      router.replace("/manage", { scroll: false });
+    }
+  }
 
   return (
     <div className="mt-4">
@@ -152,11 +204,12 @@ function DecisionButtons({
         </div>
       ) : null}
       {declining ? (
-        <form action={action} className="space-y-3">
+        <form ref={formRef} action={action} className="space-y-3">
           <input type="hidden" name="request_id" value={requestId} />
           <input type="hidden" name="decision" value="declined" />
-          <Field id={reasonId} label="Reason for decline" required>
+          <Field id={reasonId} label="Reason for decline">
             <textarea
+              ref={reasonRef}
               id={reasonId}
               name="decline_reason"
               required
@@ -169,17 +222,21 @@ function DecisionButtons({
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex min-h-11 items-center justify-center rounded-md bg-status-danger px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-60"
+              title="Save decline"
+              aria-label="Save decline"
+              className="inline-flex size-11 items-center justify-center rounded-full bg-status-danger text-text-inverse hover:opacity-90 disabled:opacity-60"
             >
-              Send decline
+              <SaveIcon />
             </button>
             <button
               type="button"
               disabled={pending}
-              onClick={() => setDeclining(false)}
-              className="inline-flex min-h-11 items-center justify-center rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-surface-subtle disabled:opacity-60"
+              title="Return"
+              aria-label="Return without declining"
+              onClick={cancelDecline}
+              className="inline-flex size-11 items-center justify-center rounded-full border border-border-strong bg-surface text-text-primary hover:bg-surface-subtle disabled:opacity-60"
             >
-              Cancel
+              <ReturnIcon />
             </button>
           </div>
         </form>
@@ -227,28 +284,35 @@ export function RequestCard({
   item,
   showDecisions,
   showUndo,
+  initialDeclining,
 }: {
   item: ManagedEvent;
   showDecisions?: boolean;
   showUndo?: boolean;
+  initialDeclining?: boolean;
 }) {
   return (
     <article className="rounded-lg border border-border p-3">
-      <div className="text-center">
-        <h4 className="text-base font-semibold text-text-primary">
-          {item.title}
-        </h4>
-        <p className="mt-1 text-sm font-medium text-text-primary">
-          {item.requesterName}
-        </p>
-        <p className="text-sm text-text-secondary">{item.requesterEmail}</p>
-      </div>
-      <dl className="mt-3 space-y-2">
-        <Detail label="When">{item.when}</Detail>
+      <dl className="space-y-2">
+        <Detail label="Where">
+          <span className="block font-medium">{item.roomName}</span>
+          <span className="mt-0.5 block text-text-secondary">{item.building}</span>
+        </Detail>
+        <Detail label="Who">
+          <span className="block font-medium">{item.requesterName}</span>
+          <span className="mt-0.5 block text-text-secondary">{item.requesterEmail}</span>
+        </Detail>
+        <Detail label="When">
+          <span className="whitespace-pre-line">{item.when}</span>
+        </Detail>
         <Detail label="Why">{item.why}</Detail>
       </dl>
       {showDecisions ? (
-        <DecisionButtons requestId={item.id} hasConflict={item.hasConflict} />
+        <DecisionButtons
+          requestId={item.id}
+          hasConflict={item.hasConflict}
+          initialDeclining={initialDeclining}
+        />
       ) : null}
       {showUndo ? <UndoButton reservationId={item.id} /> : null}
     </article>
@@ -260,11 +324,13 @@ export function EventCards({
   empty,
   showDecisions,
   showUndo,
+  openDeclineRequestId,
 }: {
   items: ManagedEvent[];
   empty?: string;
   showDecisions?: boolean;
   showUndo?: boolean;
+  openDeclineRequestId?: string;
 }) {
   if (items.length === 0) {
     if (!empty) return null;
@@ -283,6 +349,7 @@ export function EventCards({
             item={item}
             showDecisions={showDecisions}
             showUndo={showUndo}
+            initialDeclining={item.id === openDeclineRequestId}
           />
         </li>
       ))}

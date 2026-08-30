@@ -1,4 +1,5 @@
 import { BRAND } from "@/lib/brand";
+import { formatCampusWhen } from "@/lib/availability/format-when";
 import {
   buildApprovedEmail,
   buildDeclinedEmail,
@@ -7,11 +8,32 @@ import {
   confirmationNumber,
   type ReservationEmailFields,
 } from "@/lib/email/messages";
-import { EMAIL_LOGO_CID } from "@/lib/email/layout";
+import { EMAIL_LOGO_CID, type EmailConflictItem } from "@/lib/email/layout";
 import { emailLogoSrc } from "@/lib/email/logo";
 import { sendTransactionalEmail } from "@/lib/email/send";
 
-export { confirmationNumber };
+export function formatNoticeConflicts(
+  rows: Array<{
+    kind: string;
+    start_at: string;
+    end_at: string;
+    party_name: string | null;
+  }>,
+): EmailConflictItem[] {
+  return rows.map((row) => {
+    const when = formatCampusWhen(row.start_at, row.end_at).replaceAll(
+      "\n",
+      " ",
+    );
+    const who = row.party_name?.trim() || "Requester";
+    return {
+      status:
+        row.kind === "confirmed" ? "Confirmed reservation" : "Pending request",
+      who,
+      when,
+    };
+  });
+}
 
 export type ReservationDecisionKind = "approved" | "declined";
 
@@ -36,6 +58,12 @@ export interface NewReservationRequestEmailInput {
   endAt: string;
   reason: string;
   managerEmails?: string[];
+  conflicts?: EmailConflictItem[];
+  combined?: boolean;
+  extension?: boolean;
+  combinedStartAt?: string;
+  combinedEndAt?: string;
+  timeParts?: Array<{ kind: "approved" | "pending" | "declined"; startAt: string; endAt: string }>;
 }
 
 export function uniqueNoticeEmails(
@@ -68,6 +96,12 @@ function requestFields(
     declineReason: "",
     origin: BRAND.siteUrl,
     logoSrc: emailLogoSrc() ?? `cid:${EMAIL_LOGO_CID}`,
+    conflicts: input.conflicts,
+    combined: input.combined,
+    extension: input.extension,
+    combinedStartAt: input.combinedStartAt,
+    combinedEndAt: input.combinedEndAt,
+    timeParts: input.timeParts,
   };
 }
 

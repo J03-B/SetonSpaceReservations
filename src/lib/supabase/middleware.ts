@@ -61,8 +61,10 @@ export async function updateSession(request: NextRequest) {
 
   if (!isAuthenticated && isProtectedPath(pathname)) {
     const url = request.nextUrl.clone();
+    const next = `${pathname}${request.nextUrl.search}`;
     url.pathname = "/sign-in";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", next);
     return copyCookies(supabaseResponse, NextResponse.redirect(url));
   }
 

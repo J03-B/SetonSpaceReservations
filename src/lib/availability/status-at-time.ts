@@ -1,3 +1,4 @@
+import { addDays, startOfDay, startOfWeek } from "date-fns";
 import type { PublicAvailabilitySlot } from "@/lib/domain/types";
 import type { PublicStatus } from "@/lib/domain/statuses";
 import { parseStoredTimestamp } from "@/lib/availability/format-when";
@@ -70,6 +71,38 @@ export function getStatusForRange(
       ? slot
       : worst,
   ).publicStatus;
+}
+
+/** Highest-priority public status on a calendar day. Status and time only. */
+export function getStatusForCalendarDay(
+  slots: PublicAvailabilitySlot[],
+  spaceId: string,
+  day: Date,
+): PublicStatus {
+  const start = startOfDay(day);
+  return getStatusForRange(slots, spaceId, start, addDays(start, 1));
+}
+
+/** Sunday week starts covering every occupancy block for a space. */
+export function occupancyWeekSpan(
+  slots: PublicAvailabilitySlot[],
+  spaceId: string,
+): { firstWeekStart: Date; lastWeekStart: Date } | null {
+  const spaceSlots = slotsForSpace(slots, spaceId);
+  if (spaceSlots.length === 0) return null;
+
+  let minMs = Number.POSITIVE_INFINITY;
+  let maxMs = Number.NEGATIVE_INFINITY;
+  for (const slot of spaceSlots) {
+    minMs = Math.min(minMs, parseStoredTimestamp(slot.startAt).getTime());
+    maxMs = Math.max(maxMs, parseStoredTimestamp(slot.endAt).getTime());
+  }
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return null;
+
+  return {
+    firstWeekStart: startOfWeek(new Date(minMs), { weekStartsOn: 0 }),
+    lastWeekStart: startOfWeek(new Date(maxMs), { weekStartsOn: 0 }),
+  };
 }
 
 /** Future blocks for a space, sorted chronologically. Privacy-safe — no event details. */

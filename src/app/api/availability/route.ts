@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseISO, startOfDay, endOfDay, addDays } from "date-fns";
-import {
-  getPublicAvailability,
-  defaultAvailabilityRange,
-} from "@/lib/data/availability";
+import { parseISO, startOfDay, endOfDay } from "date-fns";
+import { getPublicAvailability } from "@/lib/data/availability";
 import { getPublicSpaces } from "@/lib/data/spaces";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -19,25 +18,12 @@ export async function GET(request: NextRequest) {
       )
     : undefined;
 
-  const defaultRange = defaultAvailabilityRange();
-  const start = startParam ? startOfDay(parseISO(startParam)) : defaultRange.start;
-  const end = endParam ? endOfDay(parseISO(endParam)) : defaultRange.end;
+  const start = startParam ? startOfDay(parseISO(startParam)) : undefined;
+  const end = endParam ? endOfDay(parseISO(endParam)) : undefined;
 
-  if (end < start) {
+  if (start && end && end < start) {
     return NextResponse.json(
       { error: { code: "INVALID_RANGE", message: "End must be after start." } },
-      { status: 400 },
-    );
-  }
-
-  if (end > addDays(start, 90)) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "RANGE_TOO_LARGE",
-          message: "Maximum query range is 90 days.",
-        },
-      },
       { status: 400 },
     );
   }

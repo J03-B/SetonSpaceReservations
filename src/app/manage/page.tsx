@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { ManageBoard, type ManagedEvent } from "@/app/manage/manage-board";
 import type { TempViewPerson } from "@/app/manage/temp-view-form";
 import type { TrustCandidate } from "@/app/manage/trust-queue";
+import { AuthMessage } from "@/components/auth/form-fields";
+import { applyEmailReservationDecision, verifyEmailDeclineLink } from "@/lib/auth/reservation-actions";
 import {
   CAMPUS_MANAGER_EMAIL,
   isBootstrapAdminEmail,
@@ -139,15 +141,82 @@ async function getTrustCandidates(): Promise<TrustCandidate[]> {
   });
 }
 
-export default async function ManagePage() {
+function emailDecisionNotice(notice: string | undefined): {
+  success?: string;
+  error?: string;
+} {
+  switch (notice) {
+    case "approved":
+      return { success: "The request was approved." };
+    case "declined":
+      return { success: "The request was declined." };
+    case "already":
+      return { error: "That request is no longer pending." };
+    case "conflict":
+      return { error: "That time conflicts with a current reservation." };
+    case "denied":
+      return { error: "You cannot review that request." };
+    case "invalid":
+      return { error: "That email link is invalid." };
+    case "error":
+      return { error: "The request could not be updated. Try again from Manage." };
+    default:
+      return {};
+  }
+}
+
+export default async function ManagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    request?: string;
+    decision?: string;
+    token?: string;
+    notice?: string;
+    decline?: string;
+  }>;
+}) {
+  const params = await searchParams;
   const session = await getSessionUser();
+  const emailQuery = new URLSearchParams();
+  if (params.request) emailQuery.set("request", params.request);
+  if (params.decision) emailQuery.set("decision", params.decision);
+  if (params.token) emailQuery.set("token", params.token);
+  const manageNext =
+    emailQuery.toString().length > 0
+      ? `/manage?${emailQuery.toString()}`
+      : "/manage";
 
   if (!session) {
-    redirect("/sign-in?next=/manage");
+    redirect(`/sign-in?next=${encodeURIComponent(manageNext)}`);
   }
   if (!session.isManager) {
     redirect("/");
   }
+
+  if (params.request && params.decision && params.token) {
+    if (params.decision === "declined") {
+      const result = await verifyEmailDeclineLink({
+        requestId: params.request,
+        token: params.token,
+      });
+      if (result.notice !== "decline-form") {
+        redirect(`/manage?notice=${result.notice}`);
+      }
+      redirect(`/manage?request=${encodeURIComponent(params.request)}&decline=1`);
+    }
+
+    const result = await applyEmailReservationDecision({
+      requestId: params.request,
+      decision: params.decision,
+      token: params.token,
+    });
+    redirect(`/manage?notice=${result.notice}`);
+  }
+
+  const notice = emailDecisionNotice(params.notice);
+  const openDeclineRequestId =
+    params.decline === "1" && params.request ? params.request : undefined;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -212,6 +281,16 @@ export default async function ManagePage() {
     requestRows = requestResult.data ?? [];
     reservationRows = reservationResult.data ?? [];
   }
+
+  const declineTarget =
+    openDeclineRequestId &&
+    requestRows.some((row) => row.id === openDeclineRequestId)
+      ? openDeclineRequestId
+      : undefined;
+  const shownNotice =
+    openDeclineRequestId && !declineTarget
+      ? emailDecisionNotice("already")
+      : notice;
 
   const conflictIds = new Set(
     requestRows
@@ -283,6 +362,11 @@ export default async function ManagePage() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-6">
       <h1 className="text-center text-3xl font-semibold">Manage</h1>
+      {shownNotice.success || shownNotice.error ? (
+        <div className="mx-auto mt-6 max-w-xl">
+          <AuthMessage success={shownNotice.success} error={shownNotice.error} />
+        </div>
+      ) : null}
       <div className="mt-8">
         <ManageBoard
           isAdmin={session.isTechAdmin}
@@ -295,6 +379,7 @@ export default async function ManagePage() {
           )}
           trustCandidates={trustCandidates}
           tempViewPeople={withCampusManager(directoryPeople, catalogRooms)}
+          openDeclineRequestId={declineTarget}
         />
       </div>
     </div>

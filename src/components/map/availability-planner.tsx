@@ -30,11 +30,18 @@ import {
   PlannerTimePicker,
 } from "@/components/map/planner-range-inputs";
 import { cn } from "@/lib/utils";
+import type { PublicAvailabilitySlot } from "@/lib/domain/types";
+import type { PublicStatus } from "@/lib/domain/statuses";
+import {
+  getStatusForCalendarDay,
+  occupancyWeekSpan,
+} from "@/lib/availability/status-at-time";
+import { FLOOR_STATUS_COLORS } from "@/lib/map/status-colors";
 
 const WEEK_PAD = 1;
 const DRAG_THRESHOLD_PX = 3;
 const VISIBLE_WEEK_ROWS = 3;
-const MAX_WEEK_ROWS = 16;
+const MAX_WEEK_ROWS = 104;
 const POINTER_BLEND = 0.22;
 const WEEK_SCROLL_DURATION_MS = 240;
 /** How far toward the next stop (0–1) before a drag snaps to it. */
@@ -86,6 +93,7 @@ function computeCalendarWeeks(
   rangeEnd: Date,
   dragHint?: DragViewportHint | null,
   frozenWeeks?: FrozenWeekWindow | null,
+  occupancySpan?: { firstWeekStart: Date; lastWeekStart: Date } | null,
 ): Date[][] {
   let firstWeekStart: Date;
   let lastWeekStart: Date;
@@ -102,6 +110,14 @@ function computeCalendarWeeks(
     );
     firstWeekStart = addDays(startOfWeek(lo, { weekStartsOn: 0 }), -7 * WEEK_PAD);
     lastWeekStart = addDays(startOfWeek(hi, { weekStartsOn: 0 }), 7 * WEEK_PAD);
+    if (occupancySpan) {
+      if (occupancySpan.firstWeekStart.getTime() < firstWeekStart.getTime()) {
+        firstWeekStart = occupancySpan.firstWeekStart;
+      }
+      if (occupancySpan.lastWeekStart.getTime() > lastWeekStart.getTime()) {
+        lastWeekStart = occupancySpan.lastWeekStart;
+      }
+    }
   }
 
   if (dragHint?.expandUpWeeks) {
@@ -714,6 +730,8 @@ interface AvailabilityPlannerProps {
   rangeStart: Date;
   rangeEnd: Date;
   onRangeChange: (start: Date, end: Date) => void;
+  occupancySlots?: PublicAvailabilitySlot[];
+  spaceId?: string;
   className?: string;
 }
 
@@ -742,6 +760,8 @@ export function AvailabilityPlanner({
   rangeStart,
   rangeEnd,
   onRangeChange,
+  occupancySlots = [],
+  spaceId,
   className,
 }: AvailabilityPlannerProps) {
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -802,6 +822,11 @@ export function AvailabilityPlanner({
 
   const [frozenWeeks, setFrozenWeeks] = useState<FrozenWeekWindow | null>(null);
 
+  const occupancySpan = useMemo(
+    () => (spaceId ? occupancyWeekSpan(occupancySlots, spaceId) : null),
+    [occupancySlots, spaceId],
+  );
+
   const weeks = useMemo(
     () =>
       computeCalendarWeeks(
@@ -809,9 +834,24 @@ export function AvailabilityPlanner({
         rangeEnd,
         draggingHandle ? dragHint : null,
         draggingHandle ? frozenWeeks : null,
+        occupancySpan,
       ),
-    [rangeStart, rangeEnd, draggingHandle, dragHint, frozenWeeks],
+    [rangeStart, rangeEnd, draggingHandle, dragHint, frozenWeeks, occupancySpan],
   );
+
+  const occupancyByDay = useMemo(() => {
+    const byDay = new Map<string, PublicStatus>();
+    if (!spaceId) return byDay;
+    for (const weekDays of weeks) {
+      for (const day of weekDays) {
+        const status = getStatusForCalendarDay(occupancySlots, spaceId, day);
+        if (status !== "Available") {
+          byDay.set(startOfDay(day).toISOString(), status);
+        }
+      }
+    }
+    return byDay;
+  }, [occupancySlots, spaceId, weeks]);
 
   useLayoutEffect(() => {
     weeksRef.current = weeks;
@@ -1574,6 +1614,23 @@ export function AvailabilityPlanner({
                         : null;
                   const dragHandle =
                     isStart && !isEnd ? "start" : isEnd && !isStart ? "end" : null;
+                  const occupancyStatus = occupancyByDay.get(
+                    startOfDay(day).toISOString(),
+                  );
+                  const occupancyColors = occupancyStatus
+                    ? FLOOR_STATUS_COLORS[occupancyStatus]
+                    : null;
+                  const occupancyLabel = occupancyColors?.label;
+                  const dateAction =
+                    pickDateRangeHandle(
+                      day,
+                      rangeStart,
+                      rangeEnd,
+                      lockedStart,
+                      lockedEnd,
+                    ) === "end"
+                      ? `Set end date to ${format(day, "MMMM d")}`
+                      : `Set start date to ${format(day, "MMMM d")}`;
 
                   return (
                     <div
@@ -1584,7 +1641,16 @@ export function AvailabilityPlanner({
                         data-day-cell
                         className="absolute inset-0"
                       >
-                        {!inRange && !isHandle ? (
+                        {occupancyColors ? (
+                          <span
+                            className="pointer-events-none absolute inset-0 rounded-xl border"
+                            style={{
+                              backgroundColor: occupancyColors.fill,
+                              borderColor: occupancyColors.stroke,
+                            }}
+                            aria-hidden="true"
+                          />
+                        ) : !inRange && !isHandle ? (
                           <span
                             className="pointer-events-none absolute inset-0 rounded-xl border border-border/60 bg-surface-subtle/70"
                             aria-hidden="true"
@@ -1614,16 +1680,9 @@ export function AvailabilityPlanner({
                             type="button"
                             onClick={() => onCalendarDaySelect(day)}
                             aria-label={
-                              pickDateRangeHandle(
-                                day,
-                                rangeStart,
-                                rangeEnd,
-                                lockedStart,
-                                lockedEnd,
-                              ) ===
-                              "end"
-                                ? `Set end date to ${format(day, "MMMM d")}`
-                                : `Set start date to ${format(day, "MMMM d")}`
+                              occupancyLabel
+                                ? `${dateAction}, ${occupancyLabel}`
+                                : dateAction
                             }
                             className={cn(
                               "absolute inset-0 z-30 flex flex-col items-center justify-center rounded-xl font-bold",

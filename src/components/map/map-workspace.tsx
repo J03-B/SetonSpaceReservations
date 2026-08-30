@@ -2,13 +2,12 @@
 
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { addDays, addHours, format, startOfDay } from "date-fns";
+import { addHours, format, startOfDay } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import type {
   PublicAvailabilitySlot,
@@ -55,6 +54,7 @@ import { submitReservationRequestAction } from "@/lib/auth/reservation-actions";
 import { snapDateToPlannerSlot } from "@/lib/availability/range-time";
 import { parseStoredTimestamp } from "@/lib/availability/format-when";
 import { DEFAULT_TIMEZONE } from "@/lib/domain/statuses";
+import type { OwnOccupancyRange } from "@/lib/data/own-pending";
 
 interface MapWorkspaceProps {
   spaces: PublicSpace[];
@@ -66,6 +66,7 @@ interface MapWorkspaceProps {
   initialMapId?: string;
   campusEditMode?: boolean;
   buildingEditMode?: string | null;
+  ownOccupancy?: OwnOccupancyRange[];
 }
 
 function formatTimelineTime(date: Date): string {
@@ -325,6 +326,7 @@ export function MapWorkspace({
   initialMapId,
   campusEditMode = false,
   buildingEditMode = null,
+  ownOccupancy = [],
 }: MapWorkspaceProps) {
   const router = useRouter();
   const [rangeStart, setRangeStart] = useState(() =>
@@ -360,13 +362,28 @@ export function MapWorkspace({
       : null);
 
   const [localSlots, setLocalSlots] = useState<PublicAvailabilitySlot[]>([]);
+  const [suppressedPending, setSuppressedPending] = useState<OwnOccupancyRange[]>(
+    [],
+  );
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
   const visibleSlots = useMemo(() => {
+    const base = slots.filter(
+      (slot) =>
+        !(
+          slot.publicStatus === "Pending" &&
+          suppressedPending.some(
+            (range) =>
+              range.spaceId === slot.spaceId &&
+              range.startAt === slot.startAt &&
+              range.endAt === slot.endAt,
+          )
+        ),
+    );
     const extras = localSlots.filter(
       (local) =>
-        !slots.some(
+        !base.some(
           (slot) =>
             slot.spaceId === local.spaceId &&
             slot.publicStatus === local.publicStatus &&
@@ -376,8 +393,33 @@ export function MapWorkspace({
               parseStoredTimestamp(local.endAt).getTime(),
         ),
     );
-    return extras.length > 0 ? [...slots, ...extras] : slots;
-  }, [slots, localSlots]);
+    return extras.length > 0 ? [...base, ...extras] : base;
+  }, [slots, localSlots, suppressedPending]);
+
+  const overlapsOwnPending = Boolean(
+    selectedSpace &&
+      [...ownOccupancy.filter((range) => range.kind === "pending"), ...localSlots]
+        .filter((range) => range.spaceId === selectedSpace.id)
+        .some(
+          (range) =>
+            parseStoredTimestamp(range.startAt) <= rangeEnd &&
+            parseStoredTimestamp(range.endAt) >= rangeStart,
+        ),
+  );
+
+  const overlapsOwnReserved = Boolean(
+    selectedSpace &&
+      ownOccupancy
+        .filter(
+          (range) =>
+            range.kind === "reserved" && range.spaceId === selectedSpace.id,
+        )
+        .some(
+          (range) =>
+            parseStoredTimestamp(range.startAt) < rangeEnd &&
+            parseStoredTimestamp(range.endAt) > rangeStart,
+        ),
+  );
 
   const requestPending = Boolean(
     selectedSpace &&
@@ -387,13 +429,9 @@ export function MapWorkspace({
           slot.publicStatus === "Pending" &&
           parseStoredTimestamp(slot.startAt) < rangeEnd &&
           parseStoredTimestamp(slot.endAt) > rangeStart,
-      ),
+      ) &&
+      !overlapsOwnPending,
   );
-
-  useEffect(() => {
-    setRequestError(null);
-    setRequestBusy(false);
-  }, [selectedSlug, rangeStart, rangeEnd]);
 
   const handleRequestSpace = useCallback(async (description: string) => {
     if (!selectedSpace) return;
@@ -431,13 +469,24 @@ export function MapWorkspace({
       return;
     }
 
+    setSuppressedPending((prev) => [
+      ...prev,
+      ...result.replaced.map((range) => ({
+        spaceId: selectedSpace.id,
+        startAt: range.startAt,
+        endAt: range.endAt,
+        kind: "pending" as const,
+      })),
+    ]);
     setLocalSlots((prev) => [
       ...prev.filter(
         (slot) =>
           !(
             slot.spaceId === selectedSpace.id &&
-            slot.startAt === result.startAt &&
-            slot.endAt === result.endAt
+            result.replaced.some(
+              (range) =>
+                range.startAt === slot.startAt && range.endAt === slot.endAt,
+            )
           ),
       ),
       {
@@ -464,16 +513,22 @@ export function MapWorkspace({
     if (!space.isActive) return;
     setSelectedSlug(space.slug);
     setSelectedSpaceOverride(space);
+    setRequestError(null);
+    setRequestBusy(false);
   }, []);
 
   const clearSelectedRoom = useCallback(() => {
     setSelectedSlug(null);
     setSelectedSpaceOverride(null);
+    setRequestError(null);
+    setRequestBusy(false);
   }, []);
 
   const handleRangeChange = useCallback((start: Date, end: Date) => {
     setRangeStart(snapDateToPlannerSlot(start));
     setRangeEnd(snapDateToPlannerSlot(end));
+    setRequestError(null);
+    setRequestBusy(false);
   }, []);
 
   const handleMapLevelChange = useCallback((mapId: string) => {
@@ -481,6 +536,8 @@ export function MapWorkspace({
     if (mapId === ROOT_MAP_ID) {
       setSelectedSlug(null);
       setSelectedSpaceOverride(null);
+      setRequestError(null);
+      setRequestBusy(false);
     }
   }, []);
 
@@ -555,6 +612,8 @@ export function MapWorkspace({
                       requestPending={requestPending}
                       requestBusy={requestBusy}
                       requestError={requestError}
+                      combineHint={overlapsOwnPending}
+                      extendHint={overlapsOwnReserved && !overlapsOwnPending}
                       onRequest={(description) => {
                         void handleRequestSpace(description);
                       }}
@@ -611,6 +670,8 @@ export function MapWorkspace({
                         rangeStart={rangeStart}
                         rangeEnd={rangeEnd}
                         onRangeChange={handleRangeChange}
+                        occupancySlots={visibleSlots}
+                        spaceId={selectedSpace?.id}
                       />
                     </div>
                     {roomChrome && selectedSpace ? (

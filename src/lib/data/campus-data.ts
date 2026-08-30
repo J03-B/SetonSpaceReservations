@@ -110,8 +110,8 @@ function requestToSlot(
 
 /** Requests in `data/campus.json` as availability slots for a date range. */
 export function campusToAvailabilitySlots(query: {
-  start: Date;
-  end: Date;
+  start?: Date;
+  end?: Date;
   spaceId?: string;
 }): PublicAvailabilitySlot[] {
   const slots: PublicAvailabilitySlot[] = [];
@@ -124,7 +124,13 @@ export function campusToAvailabilitySlots(query: {
       for (const request of room.requests) {
         const start = new Date(request.start);
         const end = new Date(request.end);
-        if (!overlaps(start, end, query.start, query.end)) continue;
+        if (
+          query.start &&
+          query.end &&
+          !overlaps(start, end, query.start, query.end)
+        ) {
+          continue;
+        }
         slots.push(requestToSlot(room, building.name, request));
       }
     }

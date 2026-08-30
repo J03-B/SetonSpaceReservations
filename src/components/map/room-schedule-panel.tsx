@@ -71,6 +71,7 @@ const CALENDAR_STATUS_COLORS: Record<
 };
 
 const ROOM_TIMELINE_LABEL_WIDTH = 52;
+const ROOM_DAY_HOURS = 24;
 const ROOM_NOW_SCROLL_OFFSET = 96;
 const COMPACT_VISIBLE_DAYS = 3;
 const WEEK_DAYS = 7;
@@ -179,7 +180,7 @@ function offsetInDay(
 ): number {
   if (date.getTime() <= dayStart.getTime()) return 0;
   if (date.getTime() >= dayEnd.getTime()) {
-    return 24 * hourHeight;
+    return ROOM_DAY_HOURS * hourHeight;
   }
   return roomDayTop(date, hourHeight);
 }
@@ -377,13 +378,21 @@ function hourMarkOpacity(
   hour: number,
   hourHeight: number,
   viewTop: number,
-  shownHours: number,
+  viewHeight: number,
 ): number {
-  const hoursFromTop = (hour * hourHeight - viewTop) / Math.max(hourHeight, 1);
-  const fadeStart = Math.max(0, shownHours - 0.85);
-  if (hoursFromTop <= fadeStart) return 1;
-  if (hoursFromTop >= shownHours) return 0;
-  return 1 - (hoursFromTop - fadeStart) / (shownHours - fadeStart);
+  const y = hour * hourHeight;
+  const top = viewTop;
+  const bottom = viewTop + Math.max(viewHeight, 0);
+  const fade = Math.max(10, hourHeight * 0.35);
+  if (y >= top && y <= bottom) return 1;
+  if (y < top) return Math.max(0, 1 - (top - y) / fade);
+  return Math.max(0, 1 - (y - bottom) / fade);
+}
+
+function hourLabelOffsetClass(hour: number): string {
+  if (hour === 0) return "translate-y-0";
+  if (hour === ROOM_DAY_HOURS) return "-translate-y-full";
+  return "-translate-y-1/2";
 }
 
 function RoomTimeline({
@@ -439,7 +448,7 @@ function RoomTimeline({
       : new Date(selectedStart.getTime() + 30 * 60000);
   const calendarStart = days[0] ?? startOfDay(selectedStart);
   const calendarEnd = addDays(days[days.length - 1] ?? calendarStart, 1);
-  const timelineHeight = 24 * hourHeight;
+  const timelineHeight = ROOM_DAY_HOURS * hourHeight;
   const todayIndex = days.findIndex((day) => isSameLocalDay(day, now));
   const span = Math.max(1, visibleSpan ?? days.length);
   const pinIndex = pinDay
@@ -463,7 +472,10 @@ function RoomTimeline({
       block.spaceId === space.id &&
       blockOverlapsRange(block, calendarStart, calendarEnd),
   );
-  const hourTicks = Array.from({ length: 24 }, (_, index) => index);
+  const hourTicks = Array.from(
+    { length: ROOM_DAY_HOURS + 1 },
+    (_, index) => index,
+  );
 
   useLayoutEffect(() => {
     const timeline = timelineScrollRef.current;
@@ -689,12 +701,15 @@ function RoomTimeline({
                   hour,
                   hourHeight,
                   timelineView.top,
-                  visibleHours,
+                  timelineView.height,
                 );
                 return (
                   <span
                     key={hour}
-                    className="absolute right-1.5 -translate-y-1/2 text-[11px] font-medium tabular-nums text-text-secondary"
+                    className={cn(
+                      "absolute right-1.5 text-[11px] font-medium tabular-nums text-text-secondary",
+                      hourLabelOffsetClass(hour),
+                    )}
                     style={{
                       top: hour * hourHeight,
                       opacity: markOpacity,
@@ -715,7 +730,7 @@ function RoomTimeline({
             }}
           >
             {hourTicks.map((hour) =>
-              hour > 0 ? (
+              hour > 0 && hour < ROOM_DAY_HOURS ? (
                 <div
                   key={hour}
                   className="pointer-events-none absolute left-0 right-0 border-t border-border/65"
@@ -725,7 +740,7 @@ function RoomTimeline({
                       hour,
                       hourHeight,
                       timelineView.top,
-                      visibleHours,
+                      timelineView.height,
                     ),
                   }}
                 />

@@ -40,12 +40,14 @@ export async function ManageBoard({
   reservations,
   trustCandidates,
   tempViewPeople,
+  openDeclineRequestId,
 }: {
   isAdmin: boolean;
   requests: ManagedEvent[];
   reservations: ManagedEvent[];
   trustCandidates: TrustCandidate[];
   tempViewPeople: TempViewPerson[];
+  openDeclineRequestId?: string;
 }) {
   const logoSrc = emailLogoSrc() ?? BRAND.logoSrc;
 
@@ -91,6 +93,7 @@ export async function ManageBoard({
               items={requests}
               empty="No pending requests"
               showDecisions
+              openDeclineRequestId={openDeclineRequestId}
             />
           </ManageColumn>
           <ManageColumn title="Current reservations" className="min-w-[16rem]">

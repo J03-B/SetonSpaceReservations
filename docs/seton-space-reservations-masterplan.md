@@ -2452,6 +2452,24 @@ Migration or Rollback: src/lib/brand.ts, src/lib/email/messages.ts, src/lib/emai
 Documents Updated: this master plan
 ```
 
+### Recorded decision: D-2026-08-30-all-occupancy
+
+```text
+Decision ID: D-2026-08-30-all-occupancy
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Pending occupancy past a 14-day fetch window did not appear while choosing another time. The date grid also only listed weeks around the selected range, so later pending days were not in the calendar at all.
+Decision: The map loads every pending request and confirmed reservation (status and time only). The room date grid extends through those occupancy weeks and marks Pending or Reserved days. Choosing a time no longer depends on a short availability window.
+Alternatives Considered: Keep a 90-day query cap and refetch when the range moves; show occupancy only on the week timeline.
+Security Impact: Authorization stays server-side. The public occupancy payload still omits requester and event details.
+Privacy Impact: Public calendar still shows status and time only.
+Accessibility Impact: Occupied day buttons include the public status in the accessible name.
+Operational Impact: Occupancy volume stays small (status and time per block). Raise MAX_WEEK_ROWS if a room’s occupancy spans more than two years.
+Migration or Rollback: src/lib/data/availability.ts, src/app/page.tsx, src/app/api/availability/route.ts, src/components/map/map-workspace.tsx, src/components/map/availability-planner.tsx, src/lib/availability/status-at-time.ts
+Documents Updated: this master plan
+```
+
 ### Recorded decision: D-2026-08-30-access-level-labels
 
 ```text
@@ -2522,6 +2540,222 @@ Accessibility Impact: None in the UI.
 Operational Impact: Phase 1 usually has one assigned manager (campus-wide). When more managers are assigned to a room, they receive the same notice.
 Migration or Rollback: supabase/migrations/20260830153000_room_manager_notice_emails.sql, src/lib/email/reservation-decision.ts, src/lib/auth/reservation-actions.ts
 Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-request-notice-actions
+
+```text
+Decision ID: D-2026-08-30-request-notice-actions
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The manager request-notice email listed requester then request ID, with no overlap summary and no way to decide from the message.
+Decision: After Requester, the notice lists Conflicts: overlapping pending requests and confirmed reservations for that room and time, or None. Before Request ID, a green Approve button and a red Decline button link to /manage with a signed token. Opening the link goes to Manage. If the manager is already signed in, the decision is applied and Manage shows a confirmation. If they are signed out, sign-in returns them to that Manage URL and then applies the decision. Email decline stores the reason “Declined from the request notice.” Authorization stays server-side; the token is not a substitute for a manager session. Public views still show status and time only.
+Alternatives Considered: Open Manage without applying; require a typed decline reason from the email.
+Security Impact: Links include an HMAC token so a requester who knows the request id cannot CSRF a signed-in manager. Apply still requires a manager session for that room. Temporary view still blocks mutations.
+Privacy Impact: Conflict lines on the manager notice may include other requesters’ names. They are not shown on public calendars.
+Accessibility Impact: Buttons are labeled Approve and Decline. Manage announces the confirmation or error.
+Operational Impact: Set EMAIL_DECISION_SECRET, or GOOGLE_CLIENT_SECRET is used. Add request_notice_conflicts for overlap lookup.
+Migration or Rollback: supabase/migrations/20260830180000_request_notice_conflicts.sql; src/lib/email/*, src/lib/auth/reservation-actions.ts, src/app/manage/page.tsx, src/lib/supabase/middleware.ts
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-email-decline-reason
+
+```text
+Decision ID: D-2026-08-30-email-decline-reason
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: D-2026-08-30-request-notice-actions auto-applied Decline from the notice with a stored default reason. The owner asked that Decline instead open the same reason form used on Manage.
+Decision: The notice Decline button still goes to Manage with a signed token. It does not apply the decline. If the manager is signed in (or after sign-in), Manage opens that request’s existing Reason for decline form (required reason, Send decline, Cancel). Submit follows the same server-side decline path as the Manage button. Approve from the notice still auto-applies when signed in. Public views still show status and time only.
+Alternatives Considered: Keep auto-decline with a default reason; collect the reason inside the email.
+Security Impact: Decline still requires a manager session and a typed reason. The token only opens the form for that request; it does not skip authorization.
+Privacy Impact: None beyond the existing manager notice.
+Accessibility Impact: The reason field is focused when opened from the email link. Cancel returns to the request actions.
+Operational Impact: None.
+Migration or Rollback: src/app/manage/page.tsx, src/app/manage/request-cards.tsx, src/lib/auth/reservation-actions.ts
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-timeslot-midnight-range
+
+```text
+Decision ID: D-2026-08-30-timeslot-midnight-range
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The room timeslot column hid later hour labels after about six visible hours, so the day looked like it stopped around 10. The owner asked for 12 to 12.
+Decision: The selected-room timeslot view is a full local day from 12 AM through 12 AM. Hour labels stay visible for every hour in the current viewport. Operating hours by space remain an open decision and are not enforced by this display.
+Alternatives Considered: Keep a 6-hour label window; show only 7 AM–10 PM.
+Security Impact: None. This is public availability display.
+Privacy Impact: Public calendar still shows status and time only.
+Accessibility Impact: Hour labels remain 12-hour clock text (12 AM through 12 AM).
+Operational Impact: None.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-combine-own-pending
+
+```text
+Decision ID: D-2026-08-30-combine-own-pending
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: A requester who already had a pending time (for example 5–10) could not submit an overlapping follow-up, so they could not extend to 10–11 by sending 4–11. Separate pending rows for the same person were also harder to review.
+Decision: If the same requester submits another pending request for the same room that overlaps or touches an earlier pending request of theirs, the submit is allowed with a required reason. The rows combine into one pending request: the time becomes the union (earliest start through latest end), and the reasons are merged. Adjacent add-ons such as 5–10 then 10–11 also combine. Other people’s pending holds still hide Request this space. Public views still show status and time only. Managers receive an updated notice; the original request ID is kept.
+Alternatives Considered: Keep hiding the form on any pending overlap; require withdrawal and a new request; merge only exact overlaps and not adjacent times.
+Security Impact: Combine runs server-side as the signed-in requester on their own pending rows. It does not approve occupancy. Overlapping confirmed reservations stay blocked at approval.
+Privacy Impact: Own pending ranges are loaded only for the signed-in user to decide whether the form stays available. They are not added to the public availability payload.
+Accessibility Impact: A short explanation is shown when the selected time continues or overlaps the requester’s own pending request.
+Operational Impact: Managers see one combined card instead of several overlapping cards from the same person.
+Migration or Rollback: supabase/migrations/20260830185103_combine_own_pending_request.sql; src/lib/auth/reservation-actions.ts; src/components/map/map-workspace.tsx; src/components/map/room-request-panel.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-extend-approved-request
+
+```text
+Decision ID: D-2026-08-30-extend-approved-request
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: A 5–10 pending request plus a 7–11 follow-up should become one 5–11 request to approve. If 5–10 was already approved, a 7–11 submit must not be blocked, must not try to re-approve 5–10, and must only request the added time.
+Decision: Overlapping or adjacent pending requests from the same person on the same room still combine into one pending row covering the union (5–10 plus 7–11 becomes 5–11). If the overlapping time is already an approved reservation of that requester, the new request is only the uncovered remainder (7–11 against approved 5–10 becomes pending 10–11). The map still shows one solid 5–11 occupancy (Reserved then Pending). The manager and requester notices show When as a green Approved card and an orange Pending card, with the combined 5–11 span above them. Approve applies only to the pending remainder. Public views still show status and time only.
+Alternatives Considered: Expand the confirmed reservation in place; keep 7–11 as a full overlapping request that cannot be approved.
+Security Impact: Combine and remainder clipping stay server-side. Adjacent add-ons do not overlap confirmed rows at approval. Other people’s pending holds still hide Request this space.
+Privacy Impact: Own reserved ranges are loaded only for the signed-in user. Public calendar still omits requester identity.
+Accessibility Impact: The request panel explains when a submit will combine pending rows or request only the added time. Email cards are labeled Approved and Pending in text, not color alone.
+Operational Impact: Managers approve only the new slice. The original approved reservation stays in place.
+Migration or Rollback: src/lib/auth/reservation-actions.ts; src/lib/email/layout.ts; src/lib/email/messages.ts; src/components/map/map-workspace.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-email-detail-cards
+
+```text
+Decision ID: D-2026-08-30-email-detail-cards
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Request, approved, and declined mail mixed inline Label: value lines with Conflicts and When cards, so the details were harder to scan. Declined mail had no red When card.
+Decision: Reservation notification emails (requester confirmation, manager request notice, approved, declined) put every detail in the same labeled container as Conflicts: label above, then a rounded card. Status, When, Reason, and Requester use status color with matching text (pending orange, approved green, declined red). Space, Conflicts, Approved by / Declined by, Decision made, and Request ID stay the gray Conflicts card. When cards keep an Approved, Pending, or Declined label in the card. Sign-in and sign-up OTP mail is unchanged. Public views still show status and time only.
+Alternatives Considered: Color only When; keep Status as inline text; put all fields in one card.
+Security Impact: None. Link tokens and server-side approval are unchanged.
+Privacy Impact: Requester name and email stay on the manager notice only. Public calendar still omits requester and event details.
+Accessibility Impact: Status is written in the card, not color alone. Plain-text fallback still lists each label and value.
+Operational Impact: New mail uses the card layout. Already-sent messages are not rewritten.
+Migration or Rollback: src/lib/email/layout.ts; src/lib/email/messages.ts
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-otp-code-card
+
+```text
+Decision ID: D-2026-08-30-otp-code-card
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Sign-in and sign-up mail showed the one-time code between two divider lines, unlike the labeled cards on reservation mail.
+Decision: Sign-in and sign-up mail put the code in a labeled Code card, the same gray container as Space and Request ID. The instruction is the intro above one divider, then the Code card. Dividers no longer wrap the code. The 6-digit code stays large and letter-spaced inside the card. Hosted Auth still uses the Magic Link template; paste the updated supabase/templates/magic_link.html (and the Manage Sign up copy if that wording is used). Public views still show status and time only.
+Alternatives Considered: Keep the code between dividers; color the code card pending orange.
+Security Impact: None. The code is still {{ .Token }} in the hosted template. Authorization stays server-side.
+Privacy Impact: None.
+Accessibility Impact: The card is labeled Code in text. Plain-text fallback lists Code then the digits.
+Operational Impact: Re-paste the Magic Link HTML in hosted Supabase Auth so live sign-in mail matches. Sign-in and sign-up still share one Auth template slot.
+Migration or Rollback: src/lib/email/otp-html.ts; src/lib/email/layout.ts; supabase/templates/magic_link.html
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-email-copy-cards
+
+```text
+Decision ID: D-2026-08-30-email-copy-cards
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Reservation mail had extra intro lines, add-on headings, and several colored cards. Sign-in and sign-up put the instruction above the code.
+Decision: Status is the only colored container and uses the words Pending, Approved, or Declined. All other cards stay gray with centered text. Requester confirmation heading and subject use Reservation submitted. Manager notice heading and subject use New reservation request. Add-on, combined, and extra intro copy are omitted from those emails. Sign-in and sign-up place Enter this code… under the Code card. Public views still show status and time only.
+Alternatives Considered: Keep add-on headings; color When and Reason; keep intro paragraphs above the details.
+Security Impact: None. Approval links and server-side checks are unchanged.
+Privacy Impact: Requester identity stays on the manager notice only.
+Accessibility Impact: Status is written in the card. OTP instruction remains visible after the code.
+Operational Impact: Re-paste the Magic Link HTML in hosted Supabase Auth. Combine/extend still happens in the product; the emails no longer name it.
+Migration or Rollback: src/lib/email/layout.ts; src/lib/email/messages.ts; src/lib/email/otp-html.ts; supabase/templates/magic_link.html
+Documents Updated: this master plan, style guide §16.2–16.3
+```
+
+### Recorded decision: D-2026-08-30-notice-no-status
+
+```text
+Decision ID: D-2026-08-30-notice-no-status
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The manager request notice included a Pending Status card. The heading already says it is a new request.
+Decision: The manager request notice has no Status card. Requester confirmation still shows Pending. Approved and declined mail still show Approved or Declined.
+Alternatives Considered: Keep Status on the notice for consistency.
+Security Impact: None.
+Privacy Impact: None.
+Accessibility Impact: The notice heading remains New reservation request.
+Operational Impact: None.
+Migration or Rollback: src/lib/email/messages.ts
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-request-id-divider
+
+```text
+Decision ID: D-2026-08-30-request-id-divider
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Request ID sat in the same stack of cards as Space and When.
+Decision: Reservation emails (confirmation, manager notice, approved, declined) place a divider above Request ID. Sign-in and sign-up have no Request ID.
+Alternatives Considered: Keep Request ID in the same card stack with no divider.
+Security Impact: None.
+Privacy Impact: None.
+Accessibility Impact: Request ID remains labeled in text.
+Operational Impact: None.
+Migration or Rollback: src/lib/email/layout.ts; src/lib/email/messages.ts
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-request-id-copy
+
+```text
+Decision ID: D-2026-08-30-request-id-copy
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Superseded by D-2026-08-30-request-id-no-copy
+Context: Request ID used the same large centered card as Space and When. The owner asked for a quieter left-aligned row with a copy control.
+Decision: Request ID is a smaller left-aligned row: label, ID, and a copy icon. Clicking the icon copies the ID when the client allows script (including the Manage preview). The ID also uses select-all so one click highlights it in mail clients that strip script, such as Gmail. Sign-in and sign-up have no Request ID.
+Alternatives Considered: Keep the large centered card; open a site page to copy.
+Security Impact: Copy uses the ID already in the message. The Manage preview iframe allows scripts only for this generated HTML.
+Privacy Impact: None beyond the existing Request ID in manager and requester mail.
+Accessibility Impact: The copy control is named Copy request ID. The ID remains visible as text.
+Operational Impact: Gmail still strips script, so copy-from-icon may not run there; selecting the ID still works.
+Migration or Rollback: src/lib/email/layout.ts; src/lib/email/messages.ts; src/app/manage/email-template-cards.tsx
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-request-id-no-copy
+
+```text
+Decision ID: D-2026-08-30-request-id-no-copy
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The Request ID copy icon did not copy in mail clients that strip script.
+Decision: Remove the copy icon and copy script. Request ID stays a smaller one-row field: label on the left, ID centered in the container. Mail clients still let people select the ID as text.
+Alternatives Considered: Keep a non-working icon; open a site page to copy.
+Security Impact: The Manage preview iframe no longer allows scripts for this.
+Privacy Impact: None.
+Accessibility Impact: Request ID remains visible labeled text.
+Operational Impact: None.
+Migration or Rollback: src/lib/email/layout.ts; src/app/manage/email-template-cards.tsx
+Documents Updated: this master plan, style guide §16.3
 ```
 
 ---

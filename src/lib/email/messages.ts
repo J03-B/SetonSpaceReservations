@@ -2,7 +2,14 @@ import { formatInTimeZone } from "date-fns-tz";
 import { formatCampusWhen, parseStoredTimestamp } from "@/lib/availability/format-when";
 import { BRAND } from "@/lib/brand";
 import { DEFAULT_TIMEZONE } from "@/lib/domain/statuses";
-import { renderSetonEmail, type EmailContent } from "@/lib/email/layout";
+import { emailDecisionHref } from "@/lib/email/decision-link";
+import {
+  renderSetonEmail,
+  type EmailCardTone,
+  type EmailContent,
+  type EmailConflictItem,
+  type EmailDetailRow,
+} from "@/lib/email/layout";
 import { emailLogoSrc } from "@/lib/email/logo";
 import {
   SIGN_IN_OTP_INSTRUCTION,
@@ -36,6 +43,26 @@ function formatDecisionStamp(date: Date, decidedByName: string): string {
 function whenLine(startAt: string, endAt: string): string {
   if (isTemplateToken(startAt) || isTemplateToken(endAt)) return "{when}";
   return `${formatCampusWhen(startAt, endAt).replaceAll("\n", " ")} ET`;
+}
+
+function field(
+  label: string,
+  value: string,
+  tone: EmailCardTone = "neutral",
+  extras: Partial<EmailDetailRow> = {},
+): EmailDetailRow {
+  return { label, value, tone, ...extras };
+}
+
+function requesterRows(input: ReservationEmailFields): EmailContent["rows"] {
+  const name = input.requesterName.trim();
+  const email = input.requesterEmail.trim();
+  const lines = name && name !== email ? [name, email] : [email || name];
+  return [{ label: "Requester", lines }];
+}
+
+function whenRows(input: ReservationEmailFields): EmailContent["rows"] {
+  return [field("When", whenLine(input.startAt, input.endAt))];
 }
 
 function siteActionHref(input: ReservationEmailFields): string {
@@ -78,6 +105,18 @@ export interface ReservationEmailFields {
   declineReason: string;
   origin?: string;
   logoSrc?: string;
+  conflicts?: EmailConflictItem[];
+  approveHref?: string;
+  declineHref?: string;
+  combined?: boolean;
+  extension?: boolean;
+  combinedStartAt?: string;
+  combinedEndAt?: string;
+  timeParts?: Array<{
+    kind: "approved" | "pending" | "declined";
+    startAt: string;
+    endAt: string;
+  }>;
 }
 
 export const EMAIL_PREVIEW_SAMPLE: ReservationEmailFields = {
@@ -92,6 +131,35 @@ export const EMAIL_PREVIEW_SAMPLE: ReservationEmailFields = {
   decidedAt: new Date("2026-08-30T18:00:00.000Z"),
   declineReason: "The gym is already needed for a school event at that time.",
   origin: BRAND.siteUrl,
+  extension: true,
+  combinedStartAt: "2026-09-12T21:00:00.000Z",
+  combinedEndAt: "2026-09-13T03:00:00.000Z",
+  timeParts: [
+    {
+      kind: "approved",
+      startAt: "2026-09-12T21:00:00.000Z",
+      endAt: "2026-09-13T03:00:00.000Z",
+    },
+    {
+      kind: "pending",
+      startAt: "2026-09-13T02:00:00.000Z",
+      endAt: "2026-09-13T03:00:00.000Z",
+    },
+  ],
+  conflicts: [
+    {
+      status: "Pending request",
+      who: "A. Smith",
+      when: "Sat, Sep 12, 3:00 PM–5:00 PM",
+    },
+    {
+      status: "Confirmed reservation",
+      who: "J Benin",
+      when: "Sat, Sep 12, 4:00 PM–6:00 PM",
+    },
+  ],
+  approveHref: `${BRAND.siteUrl}/manage?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=approved&token={token}`,
+  declineHref: `${BRAND.siteUrl}/manage?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=declined&token={token}`,
 };
 
 export const EMAIL_RAW_FIELDS: ReservationEmailFields = {
@@ -106,6 +174,11 @@ export const EMAIL_RAW_FIELDS: ReservationEmailFields = {
   decidedAt: EMAIL_PREVIEW_SAMPLE.decidedAt,
   declineReason: "{decline_reason}",
   origin: "{origin}",
+  conflicts: [
+    { status: "{status}", who: "{who}", when: "{when}" },
+  ],
+  approveHref: "{approve_href}",
+  declineHref: "{decline_href}",
 };
 
 export function buildApprovedEmail(input: ReservationEmailFields) {
@@ -114,16 +187,22 @@ export function buildApprovedEmail(input: ReservationEmailFields) {
     subject: `Reservation approved — ${input.roomName} — ${shortDate}`,
     ...renderSetonEmail({
       heading: "Reservation approved",
-      intro: "Your reservation request was approved.",
-      introAfter: "The time is now reserved.",
+      intro: "",
       ...cardChrome(input),
       rows: [
-        { label: "Status", value: "Reservation approved" },
-        { label: "Space", value: input.roomName },
-        { label: "When", value: whenLine(input.startAt, input.endAt) },
-        { label: "Approved by", value: input.decidedByName },
-        { label: "Decision made", value: formatDecisionStamp(input.decidedAt, input.decidedByName) },
-        { label: "Request ID", value: input.requestId, compact: true },
+        field("Status", "Approved", "approved"),
+        field("Space", input.roomName),
+        ...whenRows(input),
+        field("Approved by", input.decidedByName),
+        field(
+          "Decision made",
+          formatDecisionStamp(input.decidedAt, input.decidedByName),
+        ),
+        field("Request ID", input.requestId, "neutral", {
+          compact: true,
+          dividerBefore: true,
+          copyable: true,
+        }),
       ],
     }),
   };
@@ -132,24 +211,30 @@ export function buildApprovedEmail(input: ReservationEmailFields) {
 export function buildDeclinedEmail(input: ReservationEmailFields) {
   const shortDate = subjectDate(input.startAt);
   const rows: EmailContent["rows"] = [
-    { label: "Status", value: "Reservation declined" },
-    { label: "Space", value: input.roomName },
-    { label: "When", value: whenLine(input.startAt, input.endAt) },
+    field("Status", "Declined", "declined"),
+    field("Space", input.roomName),
+    ...whenRows(input),
   ];
   if (input.declineReason) {
-    rows.push({ label: "Reason", value: input.declineReason, multiline: true });
+    rows.push(field("Reason", input.declineReason, "neutral", { multiline: true }));
   }
   rows.push(
-    { label: "Declined by", value: input.decidedByName },
-    { label: "Decision made", value: formatDecisionStamp(input.decidedAt, input.decidedByName) },
-    { label: "Request ID", value: input.requestId, compact: true },
+    field("Declined by", input.decidedByName),
+    field(
+      "Decision made",
+      formatDecisionStamp(input.decidedAt, input.decidedByName),
+    ),
+    field("Request ID", input.requestId, "neutral", {
+      compact: true,
+      dividerBefore: true,
+      copyable: true,
+    }),
   );
   return {
     subject: `Reservation declined — ${input.roomName} — ${shortDate}`,
     ...renderSetonEmail({
       heading: "Reservation declined",
-      intro: "Your reservation request was declined.",
-      introAfter: "The time is not reserved.",
+      intro: "",
       ...cardChrome(input),
       rows,
     }),
@@ -159,18 +244,21 @@ export function buildDeclinedEmail(input: ReservationEmailFields) {
 export function buildRequesterSubmittedEmail(input: ReservationEmailFields) {
   const shortDate = subjectDate(input.startAt);
   return {
-    subject: `Reservation request submitted — ${input.roomName} — ${shortDate}`,
+    subject: `Reservation submitted — ${input.roomName} — ${shortDate}`,
     ...renderSetonEmail({
-      heading: "Request submitted",
-      intro: "We received your reservation request.",
-      introAfter: "It is pending review.",
+      heading: "Reservation submitted",
+      intro: "",
       ...cardChrome(input),
       rows: [
-        { label: "Status", value: "Submitted" },
-        { label: "Space", value: input.roomName },
-        { label: "When", value: whenLine(input.startAt, input.endAt) },
-        { label: "Reason", value: input.reason, multiline: true },
-        { label: "Request ID", value: input.requestId, compact: true },
+        field("Status", "Pending", "pending"),
+        field("Space", input.roomName),
+        ...whenRows(input),
+        field("Reason", input.reason, "neutral", { multiline: true }),
+        field("Request ID", input.requestId, "neutral", {
+          compact: true,
+          dividerBefore: true,
+          copyable: true,
+        }),
       ],
     }),
   };
@@ -178,24 +266,42 @@ export function buildRequesterSubmittedEmail(input: ReservationEmailFields) {
 
 export function buildMailboxNewRequestEmail(input: ReservationEmailFields) {
   const shortDate = subjectDate(input.startAt);
-  const requesterName = input.requesterName.trim() || input.requesterEmail;
+  const approveHref =
+    input.approveHref ??
+    (isTemplateToken(input.requestId)
+      ? "{approve_href}"
+      : emailDecisionHref(input.requestId, "approved"));
+  const declineHref =
+    input.declineHref ??
+    (isTemplateToken(input.requestId)
+      ? "{decline_href}"
+      : emailDecisionHref(input.requestId, "declined"));
   return {
     subject: `New reservation request — ${input.roomName} — ${shortDate}`,
     ...renderSetonEmail({
       heading: "New reservation request",
-      intro: "A reservation request was submitted.",
-      introAfter: "It needs review.",
+      intro: "",
       ...cardChrome(input),
       rows: [
-        { label: "Status", value: "Submitted" },
-        { label: "Space", value: input.roomName },
-        { label: "When", value: whenLine(input.startAt, input.endAt) },
-        { label: "Reason", value: input.reason, multiline: true },
+        field("Space", input.roomName),
+        ...whenRows(input),
+        field("Reason", input.reason, "neutral", { multiline: true }),
+        ...requesterRows(input),
         {
-          label: "Requester",
-          value: `${requesterName} (${input.requesterEmail})`,
+          label: "Conflicts",
+          conflicts: input.conflicts ?? [],
         },
-        { label: "Request ID", value: input.requestId, compact: true },
+        {
+          buttons: [
+            { label: "Approve", href: approveHref, kind: "approve" },
+            { label: "Decline", href: declineHref, kind: "decline" },
+          ],
+        },
+        field("Request ID", input.requestId, "neutral", {
+          compact: true,
+          dividerBefore: true,
+          copyable: true,
+        }),
       ],
     }),
   };

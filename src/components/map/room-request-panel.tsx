@@ -12,6 +12,8 @@ export function RoomRequestPanel({
   requestPending,
   requestBusy,
   requestError,
+  combineHint = false,
+  extendHint = false,
   onRequest,
 }: {
   spaceId: string;
@@ -20,6 +22,8 @@ export function RoomRequestPanel({
   requestPending: boolean;
   requestBusy: boolean;
   requestError: string | null;
+  combineHint?: boolean;
+  extendHint?: boolean;
   onRequest: (description: string) => void;
 }) {
   const [description, setDescription] = useState("");
@@ -52,6 +56,17 @@ export function RoomRequestPanel({
         </div>
       ) : (
         <>
+          {combineHint ? (
+            <p className="mt-3 text-sm text-text-secondary">
+              This continues or overlaps your pending request. Submitting will
+              combine them into one.
+            </p>
+          ) : extendHint ? (
+            <p className="mt-3 text-sm text-text-secondary">
+              Part of this time is already reserved. Submitting will request the
+              added time.
+            </p>
+          ) : null}
           <label
             htmlFor={`request-reason-${spaceId}`}
             className="mt-4 text-xs font-medium uppercase tracking-wide text-text-secondary"

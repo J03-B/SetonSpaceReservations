@@ -68,6 +68,7 @@ interface MapNavigatorProps {
   navigationActionsRef?: RefObject<MapNavigationActions | null>;
   selectedSpaceSlug?: string | null;
   onRoomDeselect?: () => void;
+  showRequestPanel?: boolean;
 }
 
 export function MapNavigator({
@@ -84,6 +85,7 @@ export function MapNavigator({
   navigationActionsRef,
   selectedSpaceSlug = null,
   onRoomDeselect,
+  showRequestPanel = false,
 }: MapNavigatorProps) {
   const [stack, setStack] = useState<string[]>(() => {
     if (campusEditMode) return [ROOT_MAP_ID];
@@ -764,6 +766,7 @@ export function MapNavigator({
                     ? selectedRegionMatch.region.id
                     : null)
                 }
+                showRequestPanel={showRequestPanel}
               />
             </BuildingDrillFrame>
           ) : null}
@@ -779,6 +782,8 @@ export function MapNavigator({
           fullBleed={!isCampusView}
           className={isCampusView ? "h-full" : "h-full"}
           selectedRegionId={selectedRegionId}
+          iconFloorIndex={floorIndex}
+          showRequestPanel={showRequestPanel}
         />
       )}
     </>

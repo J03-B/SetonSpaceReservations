@@ -14,7 +14,7 @@ function CreateAccountSpinner() {
     <>
       <span className="sr-only">Creating account</span>
       <span
-        className="size-6 animate-spin rounded-full border-2 border-text-inverse/25 border-t-text-inverse"
+        className="size-5 animate-spin rounded-full border-2 border-text-inverse/25 border-t-text-inverse"
         aria-hidden
       />
     </>
@@ -82,7 +82,7 @@ export function SignUpForm() {
         />
       </Field>
       <div>
-        <label className="flex items-center justify-center gap-3 text-lg text-text-primary">
+        <label className="flex items-center justify-center gap-3 text-sm text-text-primary">
           <input
             id="accepted_rules"
             name="accepted_rules"
@@ -94,7 +94,7 @@ export function SignUpForm() {
           <span>I agree to follow Seton facility rules.</span>
         </label>
       </div>
-      <div className="grid min-h-16">
+      <div className="grid min-h-11">
         <button
           type="submit"
           className={cn(
@@ -128,7 +128,7 @@ export function SignUpForm() {
           <p
             id="sign-up-error"
             role="alert"
-            className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-16 items-center justify-center px-2 text-center text-lg font-medium text-status-danger"
+            className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-11 items-center justify-center px-2 text-center text-sm font-medium text-status-danger"
           >
             {state?.error}
           </p>

@@ -1,7 +1,9 @@
-/** Seton brand assets — logo at public/logo.png */
+/** Seton brand assets — site header uses public/logo.png; emails use Storage. */
 export const BRAND = {
   name: "Seton Spaces",
   logoSrc: "/logo.png",
   logoAlt: "Seton School",
-  supportEmail: "j03-b@setonschool.dev",
+  email: "dev@setonschool.net",
+  /** Phase 1 public site for email “Open Seton Spaces” (D-2026-08-30-email-open-site). */
+  siteUrl: "https://seton-space.vercel.app",
 } as const;

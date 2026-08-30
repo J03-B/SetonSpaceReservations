@@ -18,6 +18,7 @@ import {
 } from "@/lib/map/map-config";
 import {
   clientToPercent,
+  exportIconsArrayTypeScript,
   exportRegionsArrayTypeScript,
   exportRegionsJson,
   exportRegionsTypeScript,
@@ -29,10 +30,21 @@ import {
   regionHasPolygon,
 } from "@/lib/map/region-geometry";
 import {
+  CAMPUS_MAP_ICON_SIZE,
+  createMapIcon,
+  EMPTY_MAP_ICONS,
+  MAP_ICON_CATALOG,
+  readMapIconDraft,
+  writeMapIconDraft,
+  type MapIconKind,
+  type MapIconMarker,
+} from "@/lib/map/map-icons";
+import {
   MapRegionRectButton,
   MapRegionSvgLayer,
   PolygonDraftOverlay,
 } from "./map-region-overlay";
+import { MapIconLayer, MapIconPalette, useMapIcons } from "./map-icon-layer";
 import { cn } from "@/lib/utils";
 
 type EditorStep = "idle" | "drawing" | "naming";
@@ -67,12 +79,16 @@ export function CampusMapEditor() {
   const [regions, setRegions] = useState<MapRegion[]>(
     () => level?.regions ?? [],
   );
+  const campusConfigIcons = level?.icons ?? EMPTY_MAP_ICONS;
+  const icons = useMapIcons(ROOT_MAP_ID, 0, campusConfigIcons);
   const [fit, setFit] = useState({ fitW: 0, fitH: 0 });
   const [step, setStep] = useState<EditorStep>("idle");
   const [drawingPoints, setDrawingPoints] = useState<MapPoint[]>([]);
   const [pendingPoints, setPendingPoints] = useState<MapPoint[] | null>(null);
   const [cursorPoint, setCursorPoint] = useState<MapPoint | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIconId, setSelectedIconId] = useState<string | null>(null);
+  const [placingKind, setPlacingKind] = useState<MapIconKind | null>(null);
   const [exportOutput, setExportOutput] = useState("");
   const [showExport, setShowExport] = useState(false);
   const [showRegions, setShowRegions] = useState(false);
@@ -111,6 +127,16 @@ export function CampusMapEditor() {
     return () => observer.disconnect();
   }, [refreshFit]);
 
+  const persistIcons = useCallback(
+    (updater: MapIconMarker[] | ((prev: MapIconMarker[]) => MapIconMarker[])) => {
+      const current =
+        readMapIconDraft(ROOT_MAP_ID, 0) ?? campusConfigIcons;
+      const next = typeof updater === "function" ? updater(current) : updater;
+      writeMapIconDraft(ROOT_MAP_ID, 0, next);
+    },
+    [campusConfigIcons],
+  );
+
   const resetDrawing = useCallback(() => {
     setStep("idle");
     setDrawingPoints([]);
@@ -120,26 +146,64 @@ export function CampusMapEditor() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && (step === "drawing" || step === "naming")) {
-        resetDrawing();
-        setDraftLabel("");
-        setDraftId("");
-        setDraftChildMapId("");
+      const typingTarget = (e.target as HTMLElement | null)?.closest(
+        "input, textarea, select",
+      );
+      if (e.key === "Escape") {
+        if (placingKind) {
+          setPlacingKind(null);
+          return;
+        }
+        if (step === "drawing" || step === "naming") {
+          resetDrawing();
+          setDraftLabel("");
+          setDraftId("");
+          setDraftChildMapId("");
+        }
+        setSelectedIconId(null);
+        return;
+      }
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedIconId &&
+        step === "idle" &&
+        !typingTarget
+      ) {
+        e.preventDefault();
+        persistIcons((prev) => prev.filter((icon) => icon.id !== selectedIconId));
+        setSelectedIconId(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [step, resetDrawing]);
+  }, [step, resetDrawing, placingKind, selectedIconId, persistIcons]);
 
   const handleMapClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       if (step === "naming") return;
+
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-map-icon]")) return;
 
       const mapLayer = mapLayerRef.current;
       if (!mapLayer) return;
 
       const mapRect = mapLayer.getBoundingClientRect();
       const percent = clientToPercent(e.clientX, e.clientY, mapRect);
+
+      if (placingKind && step === "idle") {
+        persistIcons((prev) => [
+          ...prev,
+          createMapIcon(
+            placingKind,
+            percent.x,
+            percent.y,
+            CAMPUS_MAP_ICON_SIZE,
+          ),
+        ]);
+        setSelectedId(null);
+        return;
+      }
 
       if (step === "idle") {
         setDrawingPoints([percent]);
@@ -164,7 +228,7 @@ export function CampusMapEditor() {
         setDrawingPoints((prev) => [...prev, percent]);
       }
     },
-    [step, drawingPoints],
+    [step, drawingPoints, placingKind, persistIcons, setSelectedId],
   );
 
   const handleMapMove = useCallback(
@@ -213,7 +277,7 @@ export function CampusMapEditor() {
       setRegions((prev) => prev.filter((r) => r.id !== id));
       if (selectedId === id) setSelectedId(null);
     },
-    [selectedId],
+    [selectedId, setSelectedId, setRegions],
   );
 
   const handleExport = useCallback(
@@ -221,14 +285,15 @@ export function CampusMapEditor() {
       if (!level) return;
       const output =
         format === "json"
-          ? exportRegionsJson(ROOT_MAP_ID, regions)
+          ? exportRegionsJson(ROOT_MAP_ID, regions, icons)
           : format === "regions"
-            ? exportRegionsArrayTypeScript(regions)
+            ? `${exportRegionsArrayTypeScript(regions)}\n\n${exportIconsArrayTypeScript(icons)}`
             : exportRegionsTypeScript(
                 ROOT_MAP_ID,
                 level.title,
                 level.imageSrc,
                 regions,
+                icons,
               );
       setExportOutput(output);
       setShowExport(true);
@@ -238,10 +303,13 @@ export function CampusMapEditor() {
         // Clipboard may be blocked; user can still copy from the panel.
       }
     },
-    [level, regions],
+    [level, regions, icons, setExportOutput, setShowExport],
   );
 
   const instructions = useMemo(() => {
+    if (placingKind) {
+      return `Click the map to place a ${MAP_ICON_CATALOG[placingKind].label.toLowerCase()}. Escape to stop.`;
+    }
     if (step === "drawing" && drawingPoints.length >= 3) {
       return "Click the first dot again to close the shape, or keep adding points.";
     }
@@ -251,8 +319,11 @@ export function CampusMapEditor() {
     if (step === "naming") {
       return "Name the building, then save or cancel.";
     }
-    return "Click to place the first corner dot of a building outline.";
-  }, [step, drawingPoints.length]);
+    if (selectedIconId) {
+      return "Drag the icon to move it, or remove it.";
+    }
+    return "Click to place the first corner of a building, or pick an icon to stamp.";
+  }, [step, drawingPoints.length, placingKind, selectedIconId]);
 
   const editorColors = useCallback(
     () => ({
@@ -280,6 +351,32 @@ export function CampusMapEditor() {
               className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-subtle"
             >
               Cancel shape
+            </button>
+          ) : null}
+          <span className="text-xs text-text-secondary">Icons</span>
+          <MapIconPalette
+            selectedKind={placingKind}
+            onSelect={(kind) => {
+              setPlacingKind(kind);
+              if (kind) {
+                resetDrawing();
+                setSelectedId(null);
+                setSelectedIconId(null);
+              }
+            }}
+          />
+          {selectedIconId ? (
+            <button
+              type="button"
+              onClick={() => {
+                persistIcons((prev) =>
+                  prev.filter((icon) => icon.id !== selectedIconId),
+                );
+                setSelectedIconId(null);
+              }}
+              className="rounded-md border border-status-danger px-2.5 py-1 text-xs font-medium text-status-danger hover:bg-surface-subtle"
+            >
+              Remove icon
             </button>
           ) : null}
           <span className="ml-auto flex flex-wrap gap-2">
@@ -374,6 +471,25 @@ export function CampusMapEditor() {
             {step === "naming" && pendingPoints ? (
               <PolygonDraftOverlay points={pendingPoints} closed />
             ) : null}
+
+            <MapIconLayer
+              icons={icons}
+              editMode
+              selectedId={selectedIconId}
+              defaultSize={CAMPUS_MAP_ICON_SIZE}
+              onSelect={(id) => {
+                setSelectedIconId(id);
+                setSelectedId(null);
+                setPlacingKind(null);
+              }}
+              onMove={(id, x, y) => {
+                persistIcons((prev) =>
+                  prev.map((icon) =>
+                    icon.id === id ? { ...icon, x, y } : icon,
+                  ),
+                );
+              }}
+            />
           </div>
         </div>
       </div>

@@ -41,7 +41,6 @@ export function Field({
   optional,
   help,
   error,
-  size = "md",
   children,
 }: {
   id: string;
@@ -58,14 +57,7 @@ export function Field({
 
   return (
     <div>
-      <label
-        htmlFor={id}
-        className={
-          size === "lg"
-            ? "text-base font-medium text-text-primary"
-            : "text-sm font-medium text-text-primary"
-        }
-      >
+      <label htmlFor={id} className="text-sm font-medium text-text-primary">
         {label}
         {required ? (
           <span className="ml-1 font-normal text-text-secondary">Required</span>
@@ -93,16 +85,16 @@ export const inputClassName =
   "mt-1 min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary";
 
 export const largeInputClassName =
-  "mt-3 min-h-16 w-full rounded-lg border border-border bg-surface px-4 text-lg text-text-primary";
+  "mt-2 min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base text-text-primary";
 
 export const primaryButtonClassName =
   "inline-flex min-h-11 w-full items-center justify-center rounded-md bg-action-primary px-4 py-2 text-sm font-medium text-text-inverse hover:bg-action-primary-hover disabled:opacity-60";
 
 export const largeButtonClassName =
-  "inline-flex min-h-16 w-full items-center justify-center rounded-lg bg-action-primary px-5 py-3 text-lg font-medium text-text-inverse hover:bg-action-primary-hover disabled:opacity-60";
+  "inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-action-primary px-4 py-2 text-base font-medium text-text-inverse hover:bg-action-primary-hover disabled:opacity-60";
 
 export const secondaryButtonClassName =
   "inline-flex min-h-11 w-full items-center justify-center rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-surface-subtle disabled:opacity-60";
 
 export const largeSecondaryButtonClassName =
-  "inline-flex min-h-16 w-full items-center justify-center rounded-lg border border-border-strong bg-surface px-5 py-3 text-lg font-medium text-text-primary hover:bg-surface-subtle disabled:opacity-60";
+  "inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text-primary hover:bg-surface-subtle disabled:opacity-60";

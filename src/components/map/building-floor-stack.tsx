@@ -25,6 +25,7 @@ interface BuildingFloorStackProps {
   isRegionActive?: (region: MapRegion) => boolean;
   onRegionClick?: (region: MapRegion) => void;
   selectedRegionId?: string | null;
+  showRequestPanel?: boolean;
   drillProgress?: number | null;
   className?: string;
 }
@@ -46,6 +47,8 @@ function FloorLayer({
   onRegionClick,
   selectedRegionId,
   drillProgress,
+  iconFloorIndex,
+  showRequestPanel,
 }: {
   level: MapLevel;
   pose: FloorStackPose;
@@ -58,6 +61,8 @@ function FloorLayer({
   onRegionClick?: (region: MapRegion) => void;
   selectedRegionId?: string | null;
   drillProgress?: number | null;
+  iconFloorIndex: number;
+  showRequestPanel?: boolean;
 }) {
   const currentRegionId = level.regions.some(
     (region) => region.id === selectedRegionId,
@@ -87,8 +92,10 @@ function FloorLayer({
         fullBleed
         fitToChrome
         drillProgress={drillProgress}
+        iconFloorIndex={iconFloorIndex}
         className="h-full"
         selectedRegionId={interactive ? currentRegionId : null}
+        showRequestPanel={showRequestPanel}
       />
     </div>
   );
@@ -103,6 +110,7 @@ export function BuildingFloorStack({
   selectedRegionId,
   drillProgress = null,
   className,
+  showRequestPanel = false,
 }: BuildingFloorStackProps) {
   const floorCount = getMapFloorCount(level);
   const reducedMotion = prefersReducedMotion();
@@ -180,8 +188,10 @@ export function BuildingFloorStack({
           fullBleed
           fitToChrome
           drillProgress={drillProgress}
+          iconFloorIndex={floorIndex}
           className="h-full"
           selectedRegionId={selectedRegionId}
+          showRequestPanel={showRequestPanel}
         />
       </div>
     );
@@ -225,6 +235,7 @@ export function BuildingFloorStack({
           getRegionStatus={getRegionStatus}
           isRegionActive={isRegionActive}
           drillProgress={null}
+          iconFloorIndex={anim.from}
         />
       ) : belowLevel && !selectedRegionId ? (
         <FloorLayer
@@ -237,6 +248,7 @@ export function BuildingFloorStack({
           getRegionStatus={getRegionStatus}
           isRegionActive={isRegionActive}
           drillProgress={null}
+          iconFloorIndex={belowIndex}
         />
       ) : null}
 
@@ -253,6 +265,8 @@ export function BuildingFloorStack({
         onRegionClick={onRegionClick}
         selectedRegionId={selectedRegionId}
         drillProgress={null}
+        iconFloorIndex={currentIndex}
+        showRequestPanel={showRequestPanel}
       />
     </div>
   );

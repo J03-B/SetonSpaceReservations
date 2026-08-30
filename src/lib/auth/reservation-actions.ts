@@ -1,9 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { CAMPUS_MANAGER_EMAIL } from "@/lib/auth/config";
 import { TEMP_VIEW_BLOCKED } from "@/lib/auth/impersonation";
 import { getAuthUser, getSessionUser } from "@/lib/auth/session";
 import { toEasternWallClock } from "@/lib/availability/format-when";
+import {
+  sendNewReservationRequestEmail,
+  sendRequesterSubmittedEmail,
+  sendReservationDecisionEmail,
+} from "@/lib/email/reservation-decision";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export type RequestDecisionState = {
@@ -77,7 +83,7 @@ export async function submitReservationRequestAction(input: {
 
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, name, is_active")
+    .select("id, name, is_active, manager_id")
     .eq("id", input.roomId)
     .maybeSingle();
 
@@ -101,23 +107,54 @@ export async function submitReservationRequestAction(input: {
     return { ok: true, startAt, endAt };
   }
 
-  const { error } = await supabase.from("reservation_requests").insert({
-    room_id: room.id,
-    requester_id: session.id,
-    title: room.name,
-    description,
-    start_at: startAt,
-    end_at: endAt,
-    status: "pending",
-  });
+  const { data: created, error } = await supabase
+    .from("reservation_requests")
+    .insert({
+      room_id: room.id,
+      requester_id: session.id,
+      title: room.name,
+      description,
+      start_at: startAt,
+      end_at: endAt,
+      status: "pending",
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    console.error("reservation request insert failed:", error.message);
+  if (error || !created?.id) {
+    console.error("reservation request insert failed:", error?.message);
     return { ok: false, error: "The request could not be sent. Try again." };
   }
 
   revalidatePath("/");
   revalidatePath("/manage");
+  const { data: assignedManagerEmails } = await supabase.rpc(
+    "room_manager_notice_emails",
+    { p_room_id: room.id },
+  );
+  const requestMail = {
+    requestId: created.id,
+    requesterEmail: session.email,
+    requesterName: session.fullName,
+    roomName: room.name,
+    startAt,
+    endAt,
+    reason: description,
+    managerEmails: [
+      CAMPUS_MANAGER_EMAIL,
+      ...(Array.isArray(assignedManagerEmails) ? assignedManagerEmails : []),
+    ],
+  };
+  const mailResults = await Promise.allSettled([
+    sendNewReservationRequestEmail(requestMail),
+    sendRequesterSubmittedEmail(requestMail),
+  ]);
+  if (mailResults[0].status === "rejected") {
+    console.error("New reservation request email failed:", mailResults[0].reason);
+  }
+  if (mailResults[1].status === "rejected") {
+    console.error("Requester submitted email failed:", mailResults[1].reason);
+  }
   return { ok: true, startAt, endAt };
 }
 
@@ -170,16 +207,64 @@ export async function decideReservationRequestAction(
     }
   }
 
+  const actor = await getAuthUser();
+  const decidedById = actor?.id ?? session.id;
+  const decidedAt = new Date();
+  const { data: requester } = await supabase
+    .from("users")
+    .select("email, full_name")
+    .eq("id", request.requester_id)
+    .maybeSingle();
+  const { data: roomRow } = await supabase
+    .from("rooms")
+    .select("name")
+    .eq("id", request.room_id)
+    .maybeSingle();
+  const roomName = roomRow?.name?.trim() || request.title?.trim() || "Room";
+  const decidedByName = session.fullName.trim() || session.email;
+
+  const notify = (kind: "approved" | "declined", declineReason?: string) =>
+    sendReservationDecisionEmail({
+      kind,
+      requestId: request.id,
+      requesterEmail: requester?.email ?? "",
+      roomName,
+      startAt: request.start_at,
+      endAt: request.end_at,
+      decidedByName,
+      decidedAt,
+      declineReason,
+    });
+
   if (decision === "declined") {
+    const rawReason = formData.get("decline_reason");
+    const declineReason = typeof rawReason === "string" ? rawReason.trim() : "";
+    if (declineReason.length === 0) {
+      return { error: "Enter a reason for the decline." };
+    }
+    if (declineReason.length > 2000) {
+      return { error: "Shorten the reason to 2,000 characters or fewer." };
+    }
+
     const { error } = await supabase
       .from("reservation_requests")
-      .update({ status: "declined" })
+      .update({
+        status: "declined",
+        declined_by: decidedById,
+        declined_at: decidedAt.toISOString(),
+        decline_reason: declineReason,
+      })
       .eq("id", request.id);
     if (error) {
       return { error: "The request could not be declined. Try again." };
     }
     revalidatePath("/");
     revalidatePath("/manage");
+    try {
+      await notify("declined", declineReason);
+    } catch (error) {
+      console.error("Reservation decision email failed:", error);
+    }
     return {};
   }
 
@@ -196,7 +281,6 @@ export async function decideReservationRequestAction(
     return { error: "That time conflicts with a current reservation." };
   }
 
-  const actor = await getAuthUser();
   const { error: insertError } = await supabase
     .from("reservations_confirmed")
     .insert({
@@ -207,7 +291,8 @@ export async function decideReservationRequestAction(
       description: request.description,
       start_at: request.start_at,
       end_at: request.end_at,
-      approved_by: actor?.id ?? session.id,
+      approved_by: decidedById,
+      approved_at: decidedAt.toISOString(),
       status: "active",
     });
 
@@ -226,6 +311,11 @@ export async function decideReservationRequestAction(
 
   revalidatePath("/");
   revalidatePath("/manage");
+  try {
+    await notify("approved");
+  } catch (error) {
+    console.error("Reservation decision email failed:", error);
+  }
   return {};
 }
 

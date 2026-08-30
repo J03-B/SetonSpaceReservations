@@ -7,11 +7,11 @@ import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export type AccountStatus = "active" | "suspended" | "revoked";
 export type AccessLevel =
-  | "none"
-  | "requester"
-  | "trusted"
+  | "admin"
   | "manager"
-  | "tech_admin";
+  | "trusted user"
+  | "user"
+  | "guest";
 export type AccessLabel =
   | "Guest"
   | "User"
@@ -48,15 +48,11 @@ type UserRow = {
 };
 
 export function asAccessLevel(value: string | null | undefined): AccessLevel {
-  if (
-    value === "requester" ||
-    value === "trusted" ||
-    value === "manager" ||
-    value === "tech_admin"
-  ) {
-    return value;
-  }
-  return "none";
+  if (value === "admin" || value === "tech_admin") return "admin";
+  if (value === "manager") return "manager";
+  if (value === "trusted user" || value === "trusted") return "trusted user";
+  if (value === "user" || value === "requester") return "user";
+  return "guest";
 }
 
 export function accessLabelFor(
@@ -66,18 +62,13 @@ export function accessLabelFor(
 ): AccessLabel {
   if (isTechAdmin) return "Admin";
   if (accessLevel === "manager" || isCampusManager) return "Manager";
-  if (accessLevel === "trusted") return "Trusted User";
-  if (accessLevel === "requester") return "User";
+  if (accessLevel === "trusted user") return "Trusted User";
+  if (accessLevel === "user") return "User";
   return "Guest";
 }
 
 function canSubmitRequests(accessLevel: AccessLevel, isTechAdmin: boolean) {
-  return (
-    isTechAdmin ||
-    accessLevel === "requester" ||
-    accessLevel === "trusted" ||
-    accessLevel === "manager"
-  );
+  return isTechAdmin || accessLevel !== "guest";
 }
 
 function toSessionUser(
@@ -88,13 +79,13 @@ function toSessionUser(
   const email = row.email;
   const storedAccess = asAccessLevel(row.access_level);
   const isTechAdmin =
-    storedAccess === "tech_admin" || isBootstrapAdminEmail(email);
+    storedAccess === "admin" || isBootstrapAdminEmail(email);
   const isCampusManager = isCampusManagerEmail(email);
   const isManager = storedAccess === "manager" || isTechAdmin || isCampusManager;
   const accessLevel: AccessLevel =
     isTechAdmin
-      ? "tech_admin"
-      : isManager && storedAccess === "none"
+      ? "admin"
+      : isManager && storedAccess === "guest"
         ? "manager"
         : storedAccess;
   const accountGroup: AccountGroup = isTechAdmin
@@ -159,7 +150,7 @@ async function loadAuthProfile() {
           email_verified_at: user.email_confirmed_at ?? null,
           access_level: isCampusManagerEmail(user.email ?? "")
             ? "manager"
-            : "none",
+            : "guest",
         },
         Boolean(user.email_confirmed_at),
       ),

@@ -672,7 +672,7 @@ No agent may add an undocumented transition.
 ### 14.1 Routing
 
 - Route each request to managers assigned to the selected space.
-- Notify the primary manager.
+- Notify the school mailbox (`dev@setonschool.net`) and every manager with control of that space.
 - Notify backup managers according to configuration.
 - Show the request in each assigned manager's queue.
 - Prevent managers assigned to other spaces from viewing private details.
@@ -988,7 +988,7 @@ The live Phase 1 schema uses four tables (owner decision 2026-08-28). The fuller
 
 | Table | Purpose |
 |---|---|
-| `users` | Created on signup. Stores profile data and access level (`none`, `requester`, `manager`, `tech_admin`). |
+| `users` | Created on signup. Stores profile data and access level (`admin`, `manager`, `trusted user`, `user`, `guest`). |
 | `rooms` | Every reservable room and its public details. |
 | `reservation_requests` | Requests awaiting a decision (who, when, description, status). |
 | `reservations_confirmed` | Approved reservations only (who, when, description, who approved). Overlaps are blocked in the database. |
@@ -1976,7 +1976,7 @@ The following are not fully determined:
 15. Data retention period
 16. Attachment requirements
 17. Public event title visibility, if ever allowed
-18. **Support contact — decided 2026-08-29:** Phase 1 help page is the Account/Sign in card layout. Contact is `j03-b@setonschool.dev`. Escalation path remains open.
+18. **Support contact — decided 2026-08-30:** Phase 1 help page is the Account/Sign in card layout. Send, Reply-To, and Help all use `dev@setonschool.net`. Escalation path remains open.
 19. Hosting platform
 20. Pilot space
 21. **Schema scope for Phase 1 — decided 2026-08-28:** four tables (`users`, `rooms`, `reservation_requests`, `reservations_confirmed`). Role tables, domain tables, hours, blackouts, and audit were deferred.
@@ -2261,7 +2261,7 @@ Documents Updated: this master plan
 Decision ID: D-2026-08-29-help-support-email
 Date: 2026-08-29
 Owner: Product owner (chat request)
-Status: Approved
+Status: Superseded by D-2026-08-30-mail-mailbox
 Context: Open decision #18. The Help page was a long how-to with map-editor links. The owner asked for the same card layout as Account, Sign in, and Sign up, with a single contact line.
 Decision: Help uses the shared auth card layout. Phase 1 support contact is j03-b@setonschool.dev. Escalation beyond that address is still open.
 Alternatives Considered: Keep the how-to content; use TechAdmin@setonschool.net.
@@ -2324,6 +2324,203 @@ Privacy Impact: None.
 Accessibility Impact: Start date and end date fields still have visible labels. The calendar still exposes day names.
 Operational Impact: None.
 Migration or Rollback: src/lib/availability/range-time.ts, src/components/map/availability-planner.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-reservation-decision-email
+
+```text
+Decision ID: D-2026-08-30-reservation-decision-email
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Masterplan §17.2 requires request approved and request declined emails. Managers could approve or decline with no requester notice, and decline had no reason.
+Decision: After a manager or Tech Admin approves or declines a pending request, email the requester from Seton Spaces <dev@setonschool.net> using the same card style as the sign-in code email. The message includes space, when (America/New_York), confirmation number, who decided, and the decision timestamp. Declines require a requester-facing reason, which is stored and included in the email. Replies and Help questions go to the same mailbox. A failed send does not undo the decision. Undo approval does not send mail.
+Alternatives Considered: Send from the Help address; include manager-only notes; block the decision if mail fails.
+Security Impact: Authorization stays server-side. Temporary view still blocks mutations. Email HTML escapes requester-facing text.
+Privacy Impact: Public calendar still shows status and time only. Decision mail goes to the requester, not the public.
+Accessibility Impact: Decline requires a labeled reason field. Approve and decline controls keep 44px tap targets and accessible names.
+Operational Impact: Delivery uses the Gmail API as the school mailbox (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN). Sign-in codes stay on Supabase.
+Migration or Rollback: supabase/migrations/20260830042841_reservation_decline_audit.sql, src/lib/email/*, src/lib/auth/reservation-actions.ts, src/app/manage/request-cards.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-mail-mailbox
+
+```text
+Decision ID: D-2026-08-30-mail-mailbox
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Help and Reply-To used j03-b@setonschool.dev, which is not a real mailbox. j03-b@setonschool.net is also not the mailbox in use. A test confirmation appeared in the dev@setonschool.net Sent folder but never arrived at semperjoey@gmail.com, while sign-in codes from the same From address do arrive.
+Decision: All product mail is sent from and replied to Seton Spaces <dev@setonschool.net>. Help shows that address. Emails omit links unless the site origin is public https (not localhost).
+Alternatives Considered: Reply-To j03-b@setonschool.net; keep a separate Help address.
+Security Impact: None. Authorization stays server-side.
+Privacy Impact: Public calendar still shows status and time only.
+Accessibility Impact: Help mailto text matches the address.
+Operational Impact: Replies go to the mailbox. Sign-in codes stay on Supabase. Reservation notices use the Gmail API.
+Migration or Rollback: src/lib/brand.ts, src/lib/email/*, src/app/help/page.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-smtp-reservation-mail
+
+```text
+Decision ID: D-2026-08-30-smtp-reservation-mail
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Superseded by D-2026-08-30-resend-mail
+Context: Sign-in codes already arrive through Supabase Auth. The owner clarified that Google Workspace SMTP is only for reservation mail: confirmations, declines, and a notice when a request is submitted.
+Decision: Sign-in OTP remains Supabase-only. After a request is inserted, SMTP emails Seton Spaces <dev@setonschool.net> with space, when (America/New_York), confirmation number, requester, and reason. After approve or decline, SMTP emails the requester. Product wording stays declined, not rejected. A failed send does not undo the request or decision. Duplicate pending inserts do not send a second notice. Undo approval does not send mail.
+Alternatives Considered: Also email the requester a “request submitted” copy; notify the campus manager address instead of the mailbox.
+Security Impact: Authorization stays server-side. Temporary view still blocks mutations. The new-request notice is not a public calendar view.
+Privacy Impact: Public calendar still shows status and time only. Requester identity is included only on the mailbox notice, not on public views.
+Accessibility Impact: None in the UI. Decline still requires a labeled reason.
+Operational Impact: SMTP_HOST/SMTP_USER/SMTP_PASS (or Resend) must be set for these messages. Sign-in codes do not use this SMTP.
+Migration or Rollback: src/lib/email/reservation-decision.ts, src/lib/auth/reservation-actions.ts, src/lib/email/layout.ts
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-resend-mail
+
+```text
+Decision ID: D-2026-08-30-resend-mail
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Superseded by D-2026-08-30-gmail-api-send
+Context: Google Workspace SMTP put reservation mail in Sent, but Gmail dropped new subjects. The owner briefly chose Resend, then asked for the Gmail API with no extra DNS.
+Alternatives Considered: Keep smtp.gmail.com; add include:_spf.google.com and Google DKIM to the existing SiteLock SPF.
+Security Impact: Authorization stays server-side. API key is server-only.
+Privacy Impact: Public calendar still shows status and time only. New-request notices still go to the mailbox, not the public.
+Accessibility Impact: None.
+Operational Impact: Add and verify setonschool.net at resend.com/domains (Resend CNAMEs; root Google MX can stay). Set RESEND_API_KEY locally and on Vercel. Until the domain is verified, Resend can only send from onboarding@resend.dev to the Resend account email.
+Migration or Rollback: src/lib/email/send.ts, .env.example; remove nodemailer
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-gmail-api-send
+
+```text
+Decision ID: D-2026-08-30-gmail-api-send
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The owner asked for an app that sends only as the school mailbox, with no DNS changes. Resend still required domain CNAMEs to send as that address to other people.
+Decision: Reservation approved, declined, and new-request mail is sent with the Gmail API as the authorized school mailbox. From and Reply-To are that mailbox. The OAuth refresh token is server-only. Sign-in OTP stays on Supabase. No extra DNS records are added. Gmail may still drop new subjects because the domain is not SPF/DKIM aligned.
+Alternatives Considered: Resend with domain verification; send from a gmail.com address.
+Security Impact: Authorization stays server-side. The refresh token can send only as the Google account that granted gmail.send. Temporary view still blocks mutations.
+Privacy Impact: Public calendar still shows status and time only.
+Accessibility Impact: None.
+Operational Impact: Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN locally and on Vercel. Run node scripts/gmail-oauth.mjs once, signed in as the school mailbox. Redirect URI is http://127.0.0.1:42813/oauth2callback.
+Migration or Rollback: src/lib/email/send.ts, scripts/gmail-oauth.mjs, .env.example
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-email-templates
+
+```text
+Decision ID: D-2026-08-30-email-templates
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Admins needed a place to view reservation mail and copy the two Supabase OTP templates. Requesters also needed a submitted confirmation, not only the mailbox notice.
+Decision: Manage includes an admin-only Email templates column. Cards match Room layouts: a 2-column grid. Opening a card shows a centered overlay preview over the page so the Manage columns do not grow or require horizontal scrolling. A top-left control switches Show example information and Show raw. Raw uses {space}, {when}, {reason}, {request_id} and similar tokens. All six templates share the confirmation chrome: logo to the left of Seton Spaces, a divider before details, Request ID as the reservation_requests UUID, and Open Seton Spaces plus Questions outside the white card. Sign in and Sign up copy HTML with {{ .Token }} and {{ .SiteURL }} for the Open Seton Spaces link. The logo is a public Supabase Storage object (bucket brand, object logo.png) so Auth mail does not depend on the Vercel origin. After insert, Gmail sends both the mailbox notice and a requester confirmation. Failed send still does not undo the request. Duplicate pending inserts still do not send a second pair.
+Alternatives Considered: One shared OTP preview; mailbox notice only; edit templates from the database; load the logo from seton-space.vercel.app.
+Security Impact: Authorization stays server-side. The preview is admin-only on Manage. Copy is the same HTML the app already sends or pastes into Supabase. The brand bucket is public for known object URLs only — no SELECT listing policy.
+Privacy Impact: Public calendar still shows status and time only. Requester identity stays on the mailbox notice. The requester confirmation does not add identity fields.
+Accessibility Impact: Cards use 44px tap targets and aria-expanded. The preview is a modal dialog with Escape, Close, a labeled iframe, and a labeled example/raw radiogroup.
+Operational Impact: Sign-in and sign-up still share one Supabase Magic Link slot in hosted Auth; both copies are available so wording can be chosen. Reservation mail still uses the Gmail API. Hosted Auth templates must be re-pasted after logo URL changes. Open Seton Spaces uses https://seton-space.vercel.app (D-2026-08-30-email-open-site).
+Migration or Rollback: src/lib/email/messages.ts, src/lib/email/otp-html.ts, src/lib/email/logo.ts, src/lib/email/reservation-decision.ts, src/lib/auth/reservation-actions.ts, src/app/manage/email-template-cards.tsx, src/app/manage/manage-board.tsx, supabase/migrations/20260830073158_public_brand_storage_bucket.sql, supabase/templates/magic_link.html
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-email-open-site
+
+```text
+Decision ID: D-2026-08-30-email-open-site
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Manage email-template previews showed Open Seton Spaces next to Questions, but Gmail bodies often had Questions only. Sent mail dropped the action when the public origin was http://localhost or missing, because Gmail rejects those hrefs. The owner asked that the control open the live site for now.
+Decision: Open Seton Spaces always renders in the footer, to the left of Questions. The href is https://seton-space.vercel.app (BRAND.siteUrl) for Gmail reservation mail, Manage previews, OTP copy HTML, and the hosted Magic Link template. Official product hosting remains open decision 19.
+Alternatives Considered: Use NEXT_PUBLIC_SITE_URL or {{ .SiteURL }}; omit the action when the origin is not https; link mailbox notices to /manage.
+Security Impact: The link is a public https origin. Authorization stays server-side on the site.
+Privacy Impact: None. The public calendar still shows status and time only.
+Accessibility Impact: The footer is one line: Open Seton Spaces | Questions, so both controls stay visible in Gmail.
+Operational Impact: Hosted Auth Magic Link HTML must be re-pasted so OTP mail matches. Change BRAND.siteUrl when the official domain is confirmed.
+Migration or Rollback: src/lib/brand.ts, src/lib/email/messages.ts, src/lib/email/otp-html.ts, src/lib/email/layout.ts, src/lib/email/reservation-decision.ts, src/lib/auth/reservation-actions.ts, supabase/templates/magic_link.html
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-access-level-labels
+
+```text
+Decision ID: D-2026-08-30-access-level-labels
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: users.access_level used none, requester, trusted, manager, and tech_admin. The owner asked for dashboard options admin, manager, trusted user, user, and guest, and for Account to list managed rooms by building.
+Decision: The Postgres enum values are admin, manager, trusted user, user, and guest. Existing rows map tech_admin→admin, trusted→trusted user, requester→user, none→guest. Seton-domain verification still grants request permission as user. Bootstrap admin remains admin. Campus manager remains manager. Account Rooms groups catalog rooms by building; full control of every room in a building shows “{building} — all access”.
+Alternatives Considered: Keep the old enum labels and only change the UI; use trusted_user without a space.
+Security Impact: Authorization stays server-side. is_tech_admin() checks access_level = admin. Request insert still requires a verified non-guest level.
+Privacy Impact: Public calendar still shows status and time only. Account room lists are visible only to the signed-in manager or admin.
+Accessibility Impact: Rooms uses headings and lists, not color alone.
+Operational Impact: Supabase Table Editor shows the new enum options. Existing functions and the request-insert policy use the new labels.
+Migration or Rollback: supabase/migrations/20260830043910_rename_access_level_values.sql
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-map-wayfinding-icons
+
+```text
+Decision ID: D-2026-08-30-map-wayfinding-icons
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The owner asked to place men's bathroom, women's bathroom, and office markers on any map from the room editor.
+Decision: Those markers are wayfinding only — not reservable rooms and not shown as requester or event details. Editors for each building floor and the campus map can stamp, drag, and remove them. Placements persist in the browser until copied into map configuration. Public map views show status and time on rooms as before; icons do not add personal data.
+Alternatives Considered: Treat icons as rooms with space slugs; store placements only after a config paste.
+Security Impact: Icons are display configuration. Authorization for reservations stays server-side.
+Privacy Impact: Public calendar and public map still omit requester and event details.
+Accessibility Impact: Each marker has an accessible name (Men's bathroom, Women's bathroom, Office). On the public map they do not capture clicks so rooms stay usable.
+Operational Impact: Copy this floor / Copy all floors includes an icons array for map-config.ts.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-guest-no-request-panel
+
+```text
+Decision ID: D-2026-08-30-guest-no-request-panel
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Unsigned visitors were treated as guests for submission, but the room request form still appeared on the right. The owner asked that guests keep the left time-range planner and timeslot views and not see the request popup.
+Decision: Anyone who cannot submit (not signed in, or signed in as Guest) does not see the request form. The left availability planner and room timeslots stay visible. The floor camera does not reserve space for a hidden right panel. Request inserts remain server-side and still require a non-guest requester.
+Alternatives Considered: Keep the form with a Sign in button; hide the form only for unsigned visitors and still show it for signed-in Guests.
+Security Impact: Hiding the UI is not authorization. Server-side checks still block guest and unsigned submissions.
+Privacy Impact: Public calendar still shows status and time only. The hidden form does not add requester or event details.
+Accessibility Impact: Guests are not offered a request heading or reason field they cannot use.
+Operational Impact: None.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-request-notice-managers
+
+```text
+Decision ID: D-2026-08-30-request-notice-managers
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: New-request mail already went to Seton Spaces <dev@setonschool.net>. The owner asked that a submitted reservation request also go to that mailbox and to any managers who control the room.
+Decision: After a request is inserted, exactly two messages are sent. One confirmation goes only to the requester. One new-request notice goes to a single To list: the school mailbox (BRAND.email / dev@setonschool.net) plus every manager with control of that room (assigned rooms.manager_id and the campus manager). Addresses on that notice are deduped. A failed send does not undo the request. Duplicate pending inserts still do not send a second notice. Tech Admin is not added unless they manage the room. Requester identity stays on the manager notice only, not on public views.
+Alternatives Considered: Mailbox only; email every Admin; wait for a backup-manager table.
+Security Impact: Manager emails are resolved with a security-definer function because requesters cannot read other users.email. Authorization for submit and review stays server-side.
+Privacy Impact: Public calendar still shows status and time only. Requester identity is included only on the manager/mailbox notice.
+Accessibility Impact: None in the UI.
+Operational Impact: Phase 1 usually has one assigned manager (campus-wide). When more managers are assigned to a room, they receive the same notice.
+Migration or Rollback: supabase/migrations/20260830153000_room_manager_notice_emails.sql, src/lib/email/reservation-decision.ts, src/lib/auth/reservation-actions.ts
 Documents Updated: this master plan
 ```
 

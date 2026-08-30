@@ -9,7 +9,6 @@ import {
   startOfWeek,
 } from "date-fns";
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -32,13 +31,45 @@ import {
 } from "@/components/map/planner-range-inputs";
 import { cn } from "@/lib/utils";
 
-const VISIBLE_RADIUS = 3;
+const WEEK_PAD = 1;
 const DRAG_THRESHOLD_PX = 3;
-const VISIBLE_WEEK_ROWS = 4;
+const VISIBLE_WEEK_ROWS = 3;
 const MAX_WEEK_ROWS = 16;
 const POINTER_BLEND = 0.22;
+const WEEK_SCROLL_DURATION_MS = 240;
+/** How far toward the next stop (0–1) before a drag snaps to it. */
+const WEEK_SCROLL_SNAP_PULL = 0.55;
 const EXPAND_BEYOND_PX = 10;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** Matches cubic-bezier(0.22, 1, 0.36, 1) used elsewhere in the planner. */
+function easeWeekScroll(t: number) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const ax = 3 * 0.22 - 3 * 0.36 + 1;
+  const bx = 3 * 0.36 - 6 * 0.22;
+  const cx = 3 * 0.22;
+  const ay = 3 * 1 - 3 * 1 + 1;
+  const by = 3 * 1 - 6 * 1;
+  const cy = 3 * 1;
+  const sampleX = (p: number) => ((ax * p + bx) * p + cx) * p;
+  const sampleDX = (p: number) => (3 * ax * p + 2 * bx) * p + cx;
+  const sampleY = (p: number) => ((ay * p + by) * p + cy) * p;
+  let p = t;
+  for (let i = 0; i < 8; i++) {
+    const dx = sampleDX(p);
+    if (dx === 0) break;
+    p = Math.max(0, Math.min(1, p - (sampleX(p) - t) / dx));
+  }
+  return sampleY(p);
+}
 
 interface DragViewportHint {
   expandUpWeeks: number;
@@ -69,10 +100,8 @@ function computeCalendarWeeks(
     const hi = startOfDay(
       rangeStart.getTime() <= rangeEnd.getTime() ? rangeEnd : rangeStart,
     );
-    const firstDay = addDays(lo, -VISIBLE_RADIUS);
-    const lastDay = addDays(hi, VISIBLE_RADIUS);
-    firstWeekStart = startOfWeek(firstDay, { weekStartsOn: 0 });
-    lastWeekStart = startOfWeek(lastDay, { weekStartsOn: 0 });
+    firstWeekStart = addDays(startOfWeek(lo, { weekStartsOn: 0 }), -7 * WEEK_PAD);
+    lastWeekStart = addDays(startOfWeek(hi, { weekStartsOn: 0 }), 7 * WEEK_PAD);
   }
 
   if (dragHint?.expandUpWeeks) {
@@ -94,17 +123,277 @@ function computeCalendarWeeks(
   return weeks;
 }
 
-function MonthBanner({ month }: { month: Date }) {
+function weekIndexContaining(weeks: Date[][], day: Date): number {
+  const ms = startOfDay(day).getTime();
+  const index = weeks.findIndex((weekDays) =>
+    weekDays.some((weekDay) => startOfDay(weekDay).getTime() === ms),
+  );
+  return index < 0 ? 0 : index;
+}
+
+function visibleWeekWindow(
+  weekCount: number,
+  focusIndex: number,
+): { from: number; to: number } {
+  if (weekCount <= 0) return { from: 0, to: 0 };
+  const from = Math.max(0, focusIndex - 1);
+  const to = Math.min(weekCount - 1, from + VISIBLE_WEEK_ROWS - 1);
+  return {
+    from: Math.max(0, to - VISIBLE_WEEK_ROWS + 1),
+    to,
+  };
+}
+
+function weekSnapItems(grid: HTMLElement): HTMLElement[] {
+  return Array.from(grid.querySelectorAll<HTMLElement>("[data-week-snap]"));
+}
+
+function clampWeekScrollIndex(index: number, weekCount: number): number {
+  const max = Math.max(0, weekCount - VISIBLE_WEEK_ROWS);
+  return Math.max(0, Math.min(max, index));
+}
+
+function nearestWeekScrollIndex(
+  scrollTop: number,
+  offsets: number[],
+  weekCount: number,
+): number {
+  if (offsets.length === 0) return 0;
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < offsets.length; i++) {
+    const dist = Math.abs(offsets[i] - scrollTop);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return clampWeekScrollIndex(best, weekCount);
+}
+
+type WeekScrollOptions = { immediate?: boolean };
+
+function WeekRowStepper({
+  weekCount,
+  index,
+  disabled,
+  onIndexChange,
+}: {
+  weekCount: number;
+  index: number;
+  disabled?: boolean;
+  onIndexChange: (index: number, options?: WeekScrollOptions) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const indexRef = useRef(index);
+  const onIndexChangeRef = useRef(onIndexChange);
+  const dragRef = useRef<{
+    pointerId: number;
+    moved: boolean;
+    startY: number;
+    committedIndex: number;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const max = Math.max(0, weekCount - VISIBLE_WEEK_ROWS);
+  const segmentCount = max + 1;
+
+  useLayoutEffect(() => {
+    indexRef.current = index;
+    onIndexChangeRef.current = onIndexChange;
+  }, [index, onIndexChange]);
+
+  const measureThumb = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return { height: 0, stride: 0 };
+    const gap =
+      Number.parseFloat(getComputedStyle(track).rowGap) ||
+      Number.parseFloat(getComputedStyle(track).gap) ||
+      3.2;
+    const height =
+      (track.clientHeight - gap * Math.max(0, segmentCount - 1)) /
+      Math.max(1, segmentCount);
+    return { height, stride: height + gap };
+  }, [segmentCount]);
+
+  const setThumbY = useCallback((y: number, animate: boolean) => {
+    const thumb = thumbRef.current;
+    if (!thumb) return;
+    const { height } = measureThumb();
+    thumb.style.height = `${Math.max(0, height)}px`;
+    const reduce = prefersReducedMotion();
+    thumb.style.transition =
+      animate && !reduce
+        ? `transform ${WEEK_SCROLL_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+        : "none";
+    thumb.style.transform = `translateY(${y}px)`;
+  }, [measureThumb]);
+
+  const yForProgress = useCallback(
+    (progress: number) => measureThumb().stride * progress,
+    [measureThumb],
+  );
+
+  const magneticIndexFromClientY = useCallback(
+    (clientY: number, current: number) => {
+      const track = trackRef.current;
+      const { height, stride } = measureThumb();
+      if (!track || stride <= 0) return current;
+      const rect = track.getBoundingClientRect();
+      const y = Math.max(
+        0,
+        Math.min(max * stride, clientY - rect.top - height / 2),
+      );
+      const progress = y / stride;
+      const delta = progress - current;
+      if (Math.abs(delta) < WEEK_SCROLL_SNAP_PULL) return current;
+      if (Math.abs(delta) >= 1) {
+        return clampWeekScrollIndex(Math.round(progress), weekCount);
+      }
+      return clampWeekScrollIndex(current + (delta > 0 ? 1 : -1), weekCount);
+    },
+    [max, measureThumb, weekCount],
+  );
+
+  const segmentFromClientY = useCallback(
+    (clientY: number) => {
+      const track = trackRef.current;
+      if (!track) return indexRef.current;
+      const rect = track.getBoundingClientRect();
+      const ratio = (clientY - rect.top) / Math.max(1, rect.height);
+      return clampWeekScrollIndex(
+        Math.floor(Math.max(0, Math.min(0.999, ratio)) * segmentCount),
+        weekCount,
+      );
+    },
+    [segmentCount, weekCount],
+  );
+
+  const thumbReadyRef = useRef(false);
+  const prevSegmentCountRef = useRef(segmentCount);
+
+  useLayoutEffect(() => {
+    if (!thumbRef.current) {
+      thumbReadyRef.current = false;
+      return;
+    }
+    const countChanged = prevSegmentCountRef.current !== segmentCount;
+    prevSegmentCountRef.current = segmentCount;
+    const shouldAnimate =
+      thumbReadyRef.current && !countChanged && !prefersReducedMotion();
+    setThumbY(yForProgress(index), shouldAnimate);
+    thumbReadyRef.current = true;
+  }, [index, segmentCount, setThumbY, yForProgress]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const observer = new ResizeObserver(() => {
+      if (dragRef.current?.moved) return;
+      setThumbY(yForProgress(indexRef.current), false);
+    });
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [setThumbY, yForProgress]);
+
+  if (max <= 0) return null;
+
   return (
     <div
-      className="flex items-center gap-2 py-1"
-      aria-label={format(month, "MMMM yyyy")}
+      className={cn(
+        "planner-week-stepper",
+        dragging && "planner-week-stepper--dragging",
+      )}
+      role="scrollbar"
+      tabIndex={disabled ? -1 : 0}
+      aria-orientation="vertical"
+      aria-controls="availability-planner-weeks"
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={index}
+      aria-valuetext={`Weeks ${index + 1} to ${index + VISIBLE_WEEK_ROWS} of ${weekCount}`}
+      aria-label="Scroll calendar by week"
+      aria-disabled={disabled || undefined}
+      onKeyDown={(event) => {
+        if (disabled) return;
+        if (event.key === "ArrowDown" || event.key === "PageDown") {
+          event.preventDefault();
+          onIndexChange(index + 1);
+        }
+        if (event.key === "ArrowUp" || event.key === "PageUp") {
+          event.preventDefault();
+          onIndexChange(index - 1);
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          onIndexChange(0);
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          onIndexChange(max);
+        }
+      }}
+      onPointerDown={(event) => {
+        if (disabled || event.button !== 0) return;
+        event.preventDefault();
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          /* ignore untrusted test pointers */
+        }
+        dragRef.current = {
+          pointerId: event.pointerId,
+          moved: false,
+          startY: event.clientY,
+          committedIndex: indexRef.current,
+        };
+      }}
+      onPointerMove={(event) => {
+        const drag = dragRef.current;
+        if (disabled || !drag || drag.pointerId !== event.pointerId) return;
+        if (!drag.moved) {
+          if (Math.abs(event.clientY - drag.startY) < DRAG_THRESHOLD_PX) return;
+          drag.moved = true;
+          setDragging(true);
+        }
+        const next = magneticIndexFromClientY(event.clientY, drag.committedIndex);
+        if (next === drag.committedIndex) return;
+        drag.committedIndex = next;
+        onIndexChangeRef.current(next);
+      }}
+      onPointerUp={(event) => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const moved = drag.moved;
+        const next = moved
+          ? magneticIndexFromClientY(event.clientY, drag.committedIndex)
+          : segmentFromClientY(event.clientY);
+        dragRef.current = null;
+        setDragging(false);
+        onIndexChange(next);
+      }}
+      onPointerCancel={(event) => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        dragRef.current = null;
+        setDragging(false);
+        setThumbY(yForProgress(indexRef.current), !prefersReducedMotion());
+      }}
     >
-      <span className="h-px min-w-3 flex-1 bg-border" />
-      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-        {format(month, "MMMM yyyy")}
-      </span>
-      <span className="h-px min-w-3 flex-1 bg-border" />
+      <div ref={trackRef} className="planner-week-stepper-track">
+        {Array.from({ length: segmentCount }, (_, segment) => (
+          <div
+            key={segment}
+            className="planner-week-stepper-segment"
+            aria-hidden="true"
+          />
+        ))}
+        <div
+          ref={thumbRef}
+          className="planner-week-stepper-thumb"
+          aria-hidden="true"
+        />
+      </div>
     </div>
   );
 }
@@ -438,11 +727,11 @@ function RangeField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1">
       <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
         {label}
       </span>
-      <div className="rounded-lg border border-border bg-surface-subtle px-3.5 py-3">
+      <div className="rounded-lg border border-border bg-surface-subtle px-3 py-2">
         {children}
       </div>
     </div>
@@ -461,6 +750,11 @@ export function AvailabilityPlanner({
   const [dragHint, setDragHint] = useState<DragViewportHint | null>(null);
   const [lockedStart, setLockedStart] = useState(false);
   const [lockedEnd, setLockedEnd] = useState(false);
+  const [weekScrollIndex, setWeekScrollIndex] = useState(0);
+  const weekScrollIndexRef = useRef(0);
+  const weekScrollAnimRef = useRef<number | null>(null);
+  const userHasScrolledRef = useRef(false);
+  const syncingScrollRef = useRef(false);
   const [newWeekKeys, setNewWeekKeys] = useState<Set<string>>(new Set());
   const [newWeekDirection, setNewWeekDirection] = useState<
     Map<string, "up" | "down">
@@ -506,7 +800,7 @@ export function AvailabilityPlanner({
   const rangeLoDay = startDay <= endDay ? startDay : endDay;
   const rangeHiDay = startDay <= endDay ? endDay : startDay;
 
-  const dragFreezeRef = useRef<FrozenWeekWindow | null>(null);
+  const [frozenWeeks, setFrozenWeeks] = useState<FrozenWeekWindow | null>(null);
 
   const weeks = useMemo(
     () =>
@@ -514,9 +808,9 @@ export function AvailabilityPlanner({
         rangeStart,
         rangeEnd,
         draggingHandle ? dragHint : null,
-        draggingHandle ? dragFreezeRef.current : null,
+        draggingHandle ? frozenWeeks : null,
       ),
-    [rangeStart, rangeEnd, draggingHandle, dragHint],
+    [rangeStart, rangeEnd, draggingHandle, dragHint, frozenWeeks],
   );
 
   useLayoutEffect(() => {
@@ -551,84 +845,233 @@ export function AvailabilityPlanner({
     prevWeekKeysRef.current = new Set(currentKeys);
   }, [weeks]);
 
+  const applyWeekScrollIndex = useCallback((
+    nextIndex: number,
+    options?: WeekScrollOptions,
+  ) => {
+    const scroll = weeksScrollRef.current;
+    const grid = gridRef.current;
+    if (!scroll || !grid) return;
+
+    const snaps = weekSnapItems(grid);
+    const index = clampWeekScrollIndex(nextIndex, snaps.length);
+    const top = snaps[index]?.offsetTop ?? 0;
+    const alreadyThere = weekScrollIndexRef.current === index;
+    const atRest = Math.abs(scroll.scrollTop - top) < 1;
+    const animatingThis = alreadyThere && weekScrollAnimRef.current != null;
+    if (options?.immediate !== true && (animatingThis || (alreadyThere && atRest))) {
+      return;
+    }
+
+    userHasScrolledRef.current = true;
+
+    if (weekScrollAnimRef.current != null) {
+      cancelAnimationFrame(weekScrollAnimRef.current);
+      weekScrollAnimRef.current = null;
+    }
+
+    if (weekScrollIndexRef.current !== index) {
+      weekScrollIndexRef.current = index;
+      setWeekScrollIndex(index);
+    }
+
+    const from = scroll.scrollTop;
+    const immediate =
+      options?.immediate === true ||
+      prefersReducedMotion() ||
+      Math.abs(from - top) < 1;
+
+    syncingScrollRef.current = true;
+
+    if (immediate) {
+      if (Math.abs(from - top) > 0.5) {
+        scroll.scrollTop = top;
+      }
+      window.requestAnimationFrame(() => {
+        syncingScrollRef.current = false;
+      });
+      return;
+    }
+
+    const started = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - started) / WEEK_SCROLL_DURATION_MS);
+      scroll.scrollTop = from + (top - from) * easeWeekScroll(t);
+      if (t < 1) {
+        weekScrollAnimRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      weekScrollAnimRef.current = null;
+      scroll.scrollTop = top;
+      syncingScrollRef.current = false;
+    };
+    weekScrollAnimRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (weekScrollAnimRef.current != null) {
+        cancelAnimationFrame(weekScrollAnimRef.current);
+      }
+    },
+    [],
+  );
+
+  const focusDay = draggingHandle === "end" ? rangeEnd : rangeStart;
+
   useLayoutEffect(() => {
     const scroll = weeksScrollRef.current;
-    if (!scroll) return;
+    const grid = gridRef.current;
+    if (!scroll || !grid) return;
 
-    const applyMaxHeight = () => {
-      const list = scroll.querySelector<HTMLElement>("[data-weeks-list]");
-      const rows = list?.querySelectorAll<HTMLElement>("[data-week-row]");
-      if (!list || !rows?.length) return;
-
-      if (weeks.length <= VISIBLE_WEEK_ROWS) {
+    const syncVisibleWeeks = () => {
+      const snaps = weekSnapItems(grid);
+      if (snaps.length === 0) {
+        scroll.style.height = "";
         scroll.style.maxHeight = "";
         return;
       }
 
-      const lastVisible = rows[VISIBLE_WEEK_ROWS - 1] ?? rows[rows.length - 1];
-      scroll.style.maxHeight = `${
-        lastVisible.offsetTop + lastVisible.offsetHeight
+      const visible = Math.min(VISIBLE_WEEK_ROWS, snaps.length);
+      const firstSnap = snaps[0];
+      const lastVisibleSnap = snaps[visible - 1];
+      const nextHeight = `${
+        lastVisibleSnap.offsetTop + lastVisibleSnap.offsetHeight - firstSnap.offsetTop
       }px`;
+      if (scroll.style.height !== nextHeight) {
+        scroll.style.height = nextHeight;
+        scroll.style.maxHeight = nextHeight;
+      }
+
+      const focusMs = scrollFocusMsRef.current;
+      const focus =
+        !draggingHandle && focusMs != null ? new Date(focusMs) : focusDay;
+      const focusIndex = weekIndexContaining(weeks, focus);
+      const followFocus =
+        draggingHandle != null ||
+        focusMs != null ||
+        !userHasScrolledRef.current;
+      const from = followFocus
+        ? visibleWeekWindow(snaps.length, focusIndex).from
+        : clampWeekScrollIndex(weekScrollIndexRef.current, snaps.length);
+      const first = snaps[from];
+      if (!first) return;
+
+      if (followFocus) {
+        if (weekScrollAnimRef.current != null) {
+          cancelAnimationFrame(weekScrollAnimRef.current);
+          weekScrollAnimRef.current = null;
+          syncingScrollRef.current = false;
+        }
+        if (Math.abs(scroll.scrollTop - first.offsetTop) > 1) {
+          scroll.scrollTop = first.offsetTop;
+        }
+        if (weekScrollIndexRef.current !== from) {
+          weekScrollIndexRef.current = from;
+          setWeekScrollIndex(from);
+        }
+      }
+
+      if (!draggingHandle) scrollFocusMsRef.current = null;
     };
 
-    applyMaxHeight();
-    const frame = requestAnimationFrame(applyMaxHeight);
-    const observer = new ResizeObserver(applyMaxHeight);
+    syncVisibleWeeks();
+    const frame = requestAnimationFrame(syncVisibleWeeks);
+    const observer = new ResizeObserver(syncVisibleWeeks);
     observer.observe(scroll);
-    const list = scroll.querySelector("[data-weeks-list]");
-    if (list) observer.observe(list);
+    observer.observe(grid);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [weeks.length]);
+  }, [draggingHandle, dragHint, focusDay, weeks]);
 
-  useLayoutEffect(() => {
-    if (!draggingHandle) return;
-    const drag = dragRef.current;
+  useEffect(() => {
     const scroll = weeksScrollRef.current;
     const grid = gridRef.current;
-    if (!drag || !scroll || !grid) return;
+    if (!scroll || !grid) return;
 
-    const rows = grid.querySelectorAll<HTMLElement>("[data-week-row]");
-    const last = rows[rows.length - 1];
-    if (!last) return;
+    let wheelLock = false;
+    let wheelUnlock = 0;
+    let snapTimer = 0;
 
-    if (drag.expandDownLatched) {
-      scroll.scrollTop = Math.max(
-        0,
-        last.offsetTop + last.offsetHeight - scroll.clientHeight,
-      );
-    } else if (drag.expandUpLatched) {
-      scroll.scrollTop = 0;
-    }
-  }, [draggingHandle, dragHint, weeks.length]);
+    let touchStartY: number | null = null;
 
-  useLayoutEffect(() => {
-    if (draggingHandle) return;
-    const scroll = weeksScrollRef.current;
-    const grid = gridRef.current;
-    if (!scroll || !grid || weeks.length <= VISIBLE_WEEK_ROWS) return;
+    const stepBy = (direction: number) => {
+      if (direction === 0 || draggingHandle) return;
+      applyWeekScrollIndex(weekScrollIndexRef.current + direction);
+    };
 
-    const targetMs = scrollFocusMsRef.current;
-    if (targetMs == null) return;
-    scrollFocusMsRef.current = null;
+    const onTouchStart = (event: TouchEvent) => {
+      if (draggingHandle) return;
+      touchStartY = event.touches[0]?.clientY ?? null;
+    };
 
-    const rows = Array.from(grid.querySelectorAll<HTMLElement>("[data-week-row]"));
-    const rowIndex = weeks.findIndex((weekDays) =>
-      weekDays.some((day) => startOfDay(day).getTime() === targetMs),
-    );
-    const row = rows[rowIndex];
-    if (!row) return;
+    const onTouchEnd = (event: TouchEvent) => {
+      if (touchStartY == null || draggingHandle) return;
+      const endY = event.changedTouches[0]?.clientY;
+      const dy = endY == null ? 0 : touchStartY - endY;
+      touchStartY = null;
+      if (Math.abs(dy) < 28) return;
+      stepBy(dy > 0 ? 1 : -1);
+    };
 
-    const scrollRect = scroll.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    if (rowRect.top < scrollRect.top) {
-      scroll.scrollTop -= scrollRect.top - rowRect.top;
-    } else if (rowRect.bottom > scrollRect.bottom) {
-      scroll.scrollTop += rowRect.bottom - scrollRect.bottom;
-    }
-  }, [draggingHandle, weeks]);
+    const onWheel = (event: WheelEvent) => {
+      if (weeks.length <= VISIBLE_WEEK_ROWS) return;
+      event.preventDefault();
+      if (wheelLock) return;
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+        ? event.deltaY
+        : event.deltaX;
+      if (delta === 0) return;
+      wheelLock = true;
+      stepBy(delta > 0 ? 1 : -1);
+      wheelUnlock = window.setTimeout(() => {
+        wheelLock = false;
+      }, 90);
+    };
+
+    const onScroll = () => {
+      if (draggingHandle || syncingScrollRef.current) return;
+      window.clearTimeout(snapTimer);
+      snapTimer = window.setTimeout(() => {
+        const snaps = weekSnapItems(grid);
+        const offsets = snaps.map((item) => item.offsetTop);
+        const index = nearestWeekScrollIndex(
+          scroll.scrollTop,
+          offsets,
+          snaps.length,
+        );
+        applyWeekScrollIndex(index);
+      }, 40);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowDown" || event.key === "PageDown") {
+        event.preventDefault();
+        stepBy(1);
+      }
+      if (event.key === "ArrowUp" || event.key === "PageUp") {
+        event.preventDefault();
+        stepBy(-1);
+      }
+    };
+
+    scroll.addEventListener("wheel", onWheel, { passive: false });
+    scroll.addEventListener("scroll", onScroll, { passive: true });
+    scroll.addEventListener("keydown", onKeyDown);
+    scroll.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroll.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      window.clearTimeout(wheelUnlock);
+      window.clearTimeout(snapTimer);
+      scroll.removeEventListener("wheel", onWheel);
+      scroll.removeEventListener("scroll", onScroll);
+      scroll.removeEventListener("keydown", onKeyDown);
+      scroll.removeEventListener("touchstart", onTouchStart);
+      scroll.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [applyWeekScrollIndex, draggingHandle, weeks.length]);
 
   const measureGrid = useCallback(() => {
     const grid = gridRef.current;
@@ -648,6 +1091,7 @@ export function AvailabilityPlanner({
       const other = handle === "start" ? rangeEnd : rangeStart;
       const placed = placeRangeHandle(day, minutes, other);
       scrollFocusMsRef.current = startOfDay(day).getTime();
+      userHasScrolledRef.current = false;
       onRangeChange(placed.start, placed.end);
     },
     [onRangeChange, rangeEnd, rangeStart],
@@ -670,6 +1114,7 @@ export function AvailabilityPlanner({
       );
       lockHandle(handle);
       scrollFocusMsRef.current = startOfDay(day).getTime();
+      userHasScrolledRef.current = false;
       onRangeChange(next.start, next.end);
     },
     [
@@ -733,7 +1178,7 @@ export function AvailabilityPlanner({
       rafRef.current = null;
     }
     dragRef.current = null;
-    dragFreezeRef.current = null;
+    setFrozenWeeks(null);
     setDraggingHandle(null);
     setDragHint(null);
   }, []);
@@ -838,10 +1283,10 @@ export function AvailabilityPlanner({
       const originWeekStart = startOfWeek(originDate, { weekStartsOn: 0 });
       const firstWeekStart = firstWeek?.[0] ?? originWeekStart;
       const lastWeekStart = lastWeek?.[0] ?? originWeekStart;
-      dragFreezeRef.current = {
+      setFrozenWeeks({
         firstWeekStartMs: firstWeekStart.getTime(),
         lastWeekStartMs: lastWeekStart.getTime(),
-      };
+      });
       let visualX = 0;
       let visualY = 0;
 
@@ -950,11 +1395,29 @@ export function AvailabilityPlanner({
     const endM = clampMinutes(startM + 120);
     setLockedStart(false);
     setLockedEnd(false);
+    scrollFocusMsRef.current = today.getTime();
+    userHasScrolledRef.current = false;
     onRangeChange(
       applyMinutesToDay(today, startM),
       applyMinutesToDay(today, endM),
     );
   }, [onRangeChange, today]);
+
+  const visibleMonthLabel = useMemo(() => {
+    const visible = weeks.slice(
+      weekScrollIndex,
+      weekScrollIndex + VISIBLE_WEEK_ROWS,
+    );
+    const first = visible[0]?.[0];
+    const lastWeek = visible[visible.length - 1];
+    const last = lastWeek?.[lastWeek.length - 1];
+    if (!first || !last) return "";
+    if (isSameMonth(first, last)) return format(first, "MMMM yyyy");
+    if (first.getFullYear() === last.getFullYear()) {
+      return `${format(first, "MMMM")}–${format(last, "MMMM yyyy")}`;
+    }
+    return `${format(first, "MMMM yyyy")}–${format(last, "MMMM yyyy")}`;
+  }, [weekScrollIndex, weeks]);
 
   const isDayInRange = useCallback(
     (day: Date) => {
@@ -967,22 +1430,22 @@ export function AvailabilityPlanner({
   return (
     <section
       className={cn(
-        "flex min-h-0 flex-col rounded-xl border border-border bg-surface/97 p-5 shadow-lg backdrop-blur-sm",
+        "flex min-h-0 max-h-full flex-col overflow-hidden rounded-xl border border-border bg-surface/97 p-4 shadow-lg backdrop-blur-sm",
         className,
       )}
       aria-labelledby="availability-planner-heading"
     >
-      <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <h2
           id="availability-planner-heading"
-          className="text-xl font-semibold text-text-primary"
+          className="text-lg font-semibold text-text-primary"
         >
           Time range
         </h2>
         <button
           type="button"
           onClick={jumpToToday}
-          className="shrink-0 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-action-primary hover:bg-surface-subtle"
+          className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-action-primary hover:bg-surface-subtle"
         >
           Today
         </button>
@@ -990,37 +1453,53 @@ export function AvailabilityPlanner({
 
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-col select-none touch-none",
-          draggingHandle && "cursor-grabbing",
+          "flex min-h-0 min-w-0 shrink-0 flex-col select-none",
+          draggingHandle && "cursor-grabbing touch-none",
         )}
       >
         {weeks[0] ? (
-          <div className="mb-2 grid w-full min-w-0 grid-cols-7 gap-1.5 px-1">
-            {weeks[0].map((day) => (
-              <span
-                key={day.toISOString()}
-                className={cn(
-                  "text-center text-xs font-medium uppercase tracking-wide",
-                  isSameDay(day, today)
-                    ? "text-action-primary"
-                    : "text-text-secondary",
-                )}
+          <>
+            {visibleMonthLabel ? (
+              <p
+                className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-text-secondary"
+                aria-live="polite"
               >
-                {format(day, "EEE")}
-              </span>
-            ))}
-          </div>
+                {visibleMonthLabel}
+              </p>
+            ) : null}
+            <div className="mb-2 grid w-full min-w-0 shrink-0 grid-cols-7 gap-1.5 px-1">
+              {weeks[0].map((day) => (
+                <span
+                  key={day.toISOString()}
+                  className={cn(
+                    "text-center text-xs font-medium uppercase tracking-wide",
+                    isSameDay(day, today)
+                      ? "text-action-primary"
+                      : "text-text-secondary",
+                  )}
+                >
+                  {format(day, "EEE")}
+                </span>
+              ))}
+            </div>
+          </>
         ) : null}
 
+        <div className="flex min-h-0 min-w-0 w-full">
         <div
           ref={weeksScrollRef}
-          className="planner-weeks-scroll min-h-0 min-w-0 w-full"
+          id="availability-planner-weeks"
+          tabIndex={0}
+          className={cn(
+            "planner-weeks-scroll min-h-0 min-w-0 w-full flex-1 outline-none focus-visible:ring-2 focus-visible:ring-action-primary/40",
+            draggingHandle && "planner-weeks-scroll--frozen",
+          )}
           aria-label="Calendar dates"
         >
           <div
             ref={gridRef}
             data-weeks-list
-            className="relative flex w-full min-w-0 flex-col gap-1.5 p-1"
+            className="relative flex w-full flex-col gap-1.5 px-1"
           >
             {draggingHandle ? (
               <div
@@ -1040,28 +1519,21 @@ export function AvailabilityPlanner({
                 ) : (
                   <ClockHands
                     minutes={
-                      dragRef.current?.originMinutes ??
-                      (draggingHandle === "start" ? startMinutes : endMinutes)
+                      draggingHandle === "start" ? startMinutes : endMinutes
                     }
                   />
                 )}
               </div>
             ) : null}
 
-            {weeks.map((weekDays, weekIndex) => {
+            {weeks.map((weekDays) => {
             const weekKey = weekDays[0].toISOString();
             const segment = weekRangeSegment(weekDays, rangeLoDay, rangeHiDay);
             const isNewRow = !draggingHandle && newWeekKeys.has(weekKey);
             const enterDir = newWeekDirection.get(weekKey);
-            const previousSunday = weeks[weekIndex - 1]?.[0];
-            const showMonthBanner =
-              weekIndex === 0 ||
-              (previousSunday != null &&
-                !isSameMonth(weekDays[0], previousSunday));
 
             return (
-              <Fragment key={weekKey}>
-                {showMonthBanner ? <MonthBanner month={weekDays[0]} /> : null}
+              <div key={weekKey} data-week-snap className="planner-week-snap">
               <div
                 data-week-row
                 className={cn(
@@ -1102,21 +1574,15 @@ export function AvailabilityPlanner({
                         : null;
                   const dragHandle =
                     isStart && !isEnd ? "start" : isEnd && !isStart ? "end" : null;
-                  const isMidWeekMonthStart =
-                    day.getDate() === 1 && day.getDay() !== 0;
 
                   return (
                     <div
                       key={day.toISOString()}
-                      className={cn(
-                        "relative z-[1] min-w-0",
-                        isMidWeekMonthStart &&
-                          "border-l-2 border-border-strong pl-0.5",
-                      )}
+                      className="relative z-[1] aspect-square min-w-0"
                     >
                       <div
                         data-day-cell
-                        className="relative aspect-square w-full"
+                        className="absolute inset-0"
                       >
                         {!inRange && !isHandle ? (
                           <span
@@ -1166,12 +1632,7 @@ export function AvailabilityPlanner({
                               !inRange && !isToday && "text-text-secondary",
                             )}
                           >
-                            {isMidWeekMonthStart && !inRange ? (
-                              <span className="text-[0.55rem] font-semibold uppercase leading-none tracking-wide">
-                                {format(day, "MMM")}
-                              </span>
-                            ) : null}
-                            <span className="text-lg leading-none">
+                            <span className="text-sm leading-none @[20rem]:text-base @[23rem]:text-lg">
                               {format(day, "d")}
                             </span>
                           </button>
@@ -1211,14 +1672,21 @@ export function AvailabilityPlanner({
                   );
                 })}
               </div>
-              </Fragment>
+              </div>
             );
           })}
           </div>
         </div>
+        <WeekRowStepper
+          weekCount={weeks.length}
+          index={weekScrollIndex}
+          disabled={Boolean(draggingHandle)}
+          onIndexChange={applyWeekScrollIndex}
+        />
+        </div>
       </div>
 
-      <div className="mt-5 grid shrink-0 grid-cols-2 gap-4">
+      <div className="mt-3 grid shrink-0 grid-cols-2 gap-3">
         <RangeField label="Start date">
           <PlannerDatePicker
             value={rangeStart}

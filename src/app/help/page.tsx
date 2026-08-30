@@ -14,10 +14,10 @@ export default function HelpPage() {
           <p className="text-center text-lg text-text-secondary">
             For any questions, email{" "}
             <a
-              href={`mailto:${BRAND.supportEmail}`}
+              href={`mailto:${BRAND.email}`}
               className="font-medium text-action-primary no-underline hover:underline"
             >
-              {BRAND.supportEmail}
+              {BRAND.email}
             </a>
             .
           </p>

@@ -26,9 +26,14 @@ export function AuthCloseLink() {
   );
 }
 
+export const authPageClassName =
+  "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pb-20 pt-16 sm:pb-24 sm:pt-20";
+
+export const authColumnClassName = "w-full max-w-md";
+
 export function AuthPageTitle({ children }: { children: string }) {
   return (
-    <h1 className="text-center text-5xl font-semibold tracking-tight text-text-primary sm:text-6xl">
+    <h1 className="text-center text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
       {children}
     </h1>
   );
@@ -45,10 +50,10 @@ export function AuthFormCard({
 }) {
   return (
     <div
-      className={`relative mt-10 rounded-xl border border-border bg-surface px-10 pb-10 pt-16 sm:px-14 sm:pb-14 sm:pt-20 ${className}`}
+      className={`relative mt-6 rounded-xl border border-border bg-surface px-6 pb-8 pt-12 sm:px-8 sm:pb-10 sm:pt-14 ${className}`}
       role={role}
     >
-      <div className="absolute right-5 top-5 sm:right-7 sm:top-7">
+      <div className="absolute right-4 top-4">
         <AuthCloseLink />
       </div>
       {children}

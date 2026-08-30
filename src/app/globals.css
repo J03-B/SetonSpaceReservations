@@ -113,6 +113,11 @@ body {
   outline-offset: 2px;
 }
 
+/* Fields that already have a visible box should not get a second offset outline. */
+.field-box:focus-visible {
+  outline: none;
+}
+
 /* Map drill-down transitions */
 .map-transition-layer {
   transition:
@@ -286,29 +291,72 @@ body {
 
 .planner-weeks-scroll {
   overflow-x: clip;
-  overflow-y: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
-  touch-action: pan-y;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) var(--surface);
+  touch-action: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .planner-weeks-scroll::-webkit-scrollbar {
-  width: 0.5rem;
+  display: none;
 }
 
-.planner-weeks-scroll::-webkit-scrollbar-track {
-  background: var(--surface);
+.planner-weeks-scroll--frozen {
+  overflow-y: hidden;
+}
+
+.planner-week-snap {
+  flex-shrink: 0;
+}
+
+.planner-week-stepper {
+  display: flex;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-self: stretch;
+  justify-content: center;
+  padding-left: 0.4rem;
+  cursor: grab;
+  touch-action: none;
+}
+
+.planner-week-stepper--dragging {
+  cursor: grabbing;
+}
+
+.planner-week-stepper-track {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 0.45rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+  cursor: inherit;
+  touch-action: none;
+}
+
+.planner-week-stepper-segment {
+  min-height: 0;
+  flex: 1 1 0;
+  width: 100%;
+  pointer-events: none;
   border-radius: 9999px;
+  background: var(--surface-strong);
 }
 
-.planner-weeks-scroll::-webkit-scrollbar-thumb {
-  border: 2px solid var(--surface);
+.planner-week-stepper-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
   border-radius: 9999px;
   background: var(--border-strong);
 }
 
-.planner-weeks-scroll::-webkit-scrollbar-thumb:hover {
+.planner-week-stepper--dragging .planner-week-stepper-thumb {
   background: var(--text-secondary);
 }
 
@@ -336,23 +384,6 @@ body {
 
 .room-timeline-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
-}
-
-.planner-time-wheel-mask {
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24%,
-    black 76%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24%,
-    black 76%,
-    transparent 100%
-  );
 }
 
 @keyframes planner-week-row-enter {
@@ -515,6 +546,10 @@ body {
   .planner-week-row-enter-down,
   .planner-week-row-enter-up {
     animation: none;
+  }
+
+  .planner-week-stepper-thumb {
+    transition: none !important;
   }
 
   .planner-drag-handle {

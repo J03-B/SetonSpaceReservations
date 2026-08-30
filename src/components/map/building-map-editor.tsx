@@ -21,12 +21,24 @@ import {
   clientToPercent,
   clientToSnappedImagePercent,
   exportFloorsJson,
+  exportIconsArrayTypeScript,
   exportRegionsArrayTypeScript,
   exportRegionsJson,
   exportRegionsTypeScript,
   exportStackedFloorsTypeScript,
   slugifyId,
 } from "@/lib/map/editor-utils";
+import {
+  createMapIcon,
+  DEFAULT_MAP_ICON_SIZE,
+  EMPTY_MAP_ICONS,
+  MAP_ICON_CATALOG,
+  readMapIconDraft,
+  resolveMapIcons,
+  writeMapIconDraft,
+  type MapIconKind,
+  type MapIconMarker,
+} from "@/lib/map/map-icons";
 import { MapPixelLoupe } from "@/components/map/map-pixel-loupe";
 import {
   boundingBoxFromPoints,
@@ -40,6 +52,7 @@ import {
   PolygonDraftOverlay,
   PolygonVertexEditor,
 } from "./map-region-overlay";
+import { MapIconLayer, MapIconPalette, useMapIcons } from "./map-icon-layer";
 import { MAP_FLOOR_INSET } from "@/components/map/map-chrome-motion";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +103,11 @@ export function BuildingMapEditor({
         : [],
     ),
   );
+  const floorConfigIcons = level
+    ? getMapFloor(level, floorIndex).icons
+    : EMPTY_MAP_ICONS;
+  const icons = useMapIcons(buildingId, floorIndex, floorConfigIcons);
+  const iconSize = level?.iconSize ?? DEFAULT_MAP_ICON_SIZE;
   const regions = floorsRegions[floorIndex] ?? EMPTY_ROOMS;
   const activeFloor = level
     ? getMapFloor(level, floorIndex)
@@ -100,6 +118,8 @@ export function BuildingMapEditor({
   const [pendingPoints, setPendingPoints] = useState<MapPoint[] | null>(null);
   const [cursorPoint, setCursorPoint] = useState<MapPoint | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIconId, setSelectedIconId] = useState<string | null>(null);
+  const [placingKind, setPlacingKind] = useState<MapIconKind | null>(null);
   const [exportOutput, setExportOutput] = useState("");
   const [showExport, setShowExport] = useState(false);
   const [showRegions, setShowRegions] = useState(false);
@@ -154,6 +174,18 @@ export function BuildingMapEditor({
     [floorIndex],
   );
 
+  const setIcons = useCallback(
+    (
+      updater: MapIconMarker[] | ((prev: MapIconMarker[]) => MapIconMarker[]),
+    ) => {
+      const current =
+        readMapIconDraft(buildingId, floorIndex) ?? floorConfigIcons;
+      const next = typeof updater === "function" ? updater(current) : updater;
+      writeMapIconDraft(buildingId, floorIndex, next);
+    },
+    [buildingId, floorIndex, floorConfigIcons],
+  );
+
   const resetDrawing = useCallback(() => {
     setStep("idle");
     setDrawingPoints([]);
@@ -166,6 +198,8 @@ export function BuildingMapEditor({
       if (index === floorIndex) return;
       resetDrawing();
       setSelectedId(null);
+      setSelectedIconId(null);
+      setPlacingKind(null);
       setDraftLabel("");
       setDraftId("");
       setDraftSpaceSlug("");
@@ -177,16 +211,37 @@ export function BuildingMapEditor({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && (step === "drawing" || step === "naming")) {
-        resetDrawing();
-        setDraftLabel("");
-        setDraftId("");
-        setDraftSpaceSlug("");
+      const typingTarget = (e.target as HTMLElement | null)?.closest(
+        "input, textarea, select",
+      );
+      if (e.key === "Escape") {
+        if (placingKind) {
+          setPlacingKind(null);
+          return;
+        }
+        if (step === "drawing" || step === "naming") {
+          resetDrawing();
+          setDraftLabel("");
+          setDraftId("");
+          setDraftSpaceSlug("");
+        }
+        setSelectedIconId(null);
+        return;
+      }
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedIconId &&
+        step === "idle" &&
+        !typingTarget
+      ) {
+        e.preventDefault();
+        setIcons((prev) => prev.filter((icon) => icon.id !== selectedIconId));
+        setSelectedIconId(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [step, resetDrawing]);
+  }, [step, resetDrawing, placingKind, selectedIconId, setIcons]);
 
   const pointFromClient = useCallback((clientX: number, clientY: number) => {
     const mapLayer = mapLayerRef.current;
@@ -207,6 +262,8 @@ export function BuildingMapEditor({
 
   const startDrawing = useCallback(() => {
     setSelectedId(null);
+    setSelectedIconId(null);
+    setPlacingKind(null);
     setDrawingPoints([]);
     setPendingPoints(null);
     setCursorPoint(null);
@@ -217,13 +274,30 @@ export function BuildingMapEditor({
     (e: ReactMouseEvent<HTMLDivElement>) => {
       if (step === "naming") return;
 
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-map-icon]")) return;
+
       const percent = pointFromClient(e.clientX, e.clientY);
       if (!percent) return;
 
+      if (placingKind && step === "idle") {
+        setIcons((prev) => [
+          ...prev,
+          createMapIcon(
+            placingKind,
+            percent.x,
+            percent.y,
+            iconSize,
+          ),
+        ]);
+        setSelectedId(null);
+        return;
+      }
+
       if (step === "idle") {
-        const target = e.target as HTMLElement | null;
         if (target?.closest("button, [data-map-vertex]")) return;
         setSelectedId(null);
+        setSelectedIconId(null);
         return;
       }
 
@@ -247,7 +321,7 @@ export function BuildingMapEditor({
         setDrawingPoints((prev) => [...prev, percent]);
       }
     },
-    [step, drawingPoints, pointFromClient],
+    [step, drawingPoints, pointFromClient, placingKind, setIcons, setSelectedId, setSelectedIconId, iconSize],
   );
 
   const handleMapMove = useCallback(
@@ -301,7 +375,7 @@ export function BuildingMapEditor({
       setRegions((prev) => prev.filter((r) => r.id !== id));
       if (selectedId === id) setSelectedId(null);
     },
-    [selectedId, setRegions],
+    [selectedId, setSelectedId, setRegions],
   );
 
   const updateRegionPoints = useCallback(
@@ -328,9 +402,10 @@ export function BuildingMapEditor({
         number: floor.number,
         imageSrc: floor.imageSrc,
         regions: floorsRegions[index] ?? [],
+        icons: resolveMapIcons(buildingId, index, floor.icons),
       };
     });
-  }, [level, floorCount, floorsRegions]);
+  }, [level, floorCount, floorsRegions, buildingId]);
 
   const selectedRegion = useMemo(
     () => regions.find((r) => r.id === selectedId) ?? null,
@@ -339,14 +414,16 @@ export function BuildingMapEditor({
 
   const selectRoom = useCallback(
     (regionId: string) => {
+      if (placingKind) return;
       setRegions((prev) =>
         prev.map((region) =>
           region.id === regionId ? ensureRegionPoints(region) : region,
         ),
       );
       setSelectedId(regionId);
+      setSelectedIconId(null);
     },
-    [setRegions],
+    [setRegions, placingKind],
   );
 
   const handleVertexPointsChange = useCallback(
@@ -364,9 +441,9 @@ export function BuildingMapEditor({
         format === "json"
           ? floorCount > 1
             ? exportFloorsJson(buildingId, stackedFloors)
-            : exportRegionsJson(buildingId, regions)
+            : exportRegionsJson(buildingId, regions, icons)
           : format === "regions"
-            ? exportRegionsArrayTypeScript(regions)
+            ? `${exportRegionsArrayTypeScript(regions)}\n\n${exportIconsArrayTypeScript(icons)}`
             : format === "floors"
               ? exportStackedFloorsTypeScript(stackedFloors)
               : exportRegionsTypeScript(
@@ -374,6 +451,7 @@ export function BuildingMapEditor({
                   level.title,
                   level.imageSrc,
                   regions,
+                  icons,
                 );
       setExportOutput(output);
       setShowExport(true);
@@ -383,10 +461,13 @@ export function BuildingMapEditor({
         // Clipboard may be blocked.
       }
     },
-    [buildingId, level, regions, floorCount, stackedFloors],
+    [buildingId, level, regions, icons, floorCount, stackedFloors, setExportOutput, setShowExport],
   );
 
   const instructions = useMemo(() => {
+    if (placingKind) {
+      return `Click the map to place a ${MAP_ICON_CATALOG[placingKind].label.toLowerCase()}. Escape to stop.`;
+    }
     if (step === "drawing" && drawingPoints.length >= 3) {
       return "Click the first dot again to close the room shape.";
     }
@@ -396,6 +477,9 @@ export function BuildingMapEditor({
     if (step === "naming") {
       return "Name the room and link a reservable space if needed.";
     }
+    if (selectedIconId) {
+      return "Drag the icon to move it, or remove it.";
+    }
     if (selectedRegion && regionHasPolygon(selectedRegion)) {
       return "Drag a yellow corner. The magnifier shows the exact image pixel.";
     }
@@ -403,9 +487,17 @@ export function BuildingMapEditor({
       return "Selected room has no polygon — draw a new shape or pick another room.";
     }
     return floorCount > 1
-      ? "Pick a floor, click a room to edit its corners, or start Draw room."
-      : "Click a room to edit its corners, or start Draw room.";
-  }, [step, drawingPoints.length, selectedRegion, selectedId, floorCount]);
+      ? "Pick a floor, click a room to edit its corners, or place an icon."
+      : "Click a room to edit its corners, or place an icon.";
+  }, [
+    placingKind,
+    step,
+    drawingPoints.length,
+    selectedIconId,
+    selectedRegion,
+    selectedId,
+    floorCount,
+  ]);
 
   const editorColors = useCallback(
     () => ({
@@ -478,6 +570,32 @@ export function BuildingMapEditor({
               Draw room
             </button>
           )}
+          <span className="text-xs text-text-secondary">Icons</span>
+          <MapIconPalette
+            selectedKind={placingKind}
+            onSelect={(kind) => {
+              setPlacingKind(kind);
+              if (kind) {
+                resetDrawing();
+                setSelectedId(null);
+                setSelectedIconId(null);
+              }
+            }}
+          />
+          {selectedIconId ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIcons((prev) =>
+                  prev.filter((icon) => icon.id !== selectedIconId),
+                );
+                setSelectedIconId(null);
+              }}
+              className="rounded-md border border-status-danger px-2.5 py-1 text-xs font-medium text-status-danger hover:bg-surface-subtle"
+            >
+              Remove icon
+            </button>
+          ) : null}
           <span className="ml-auto flex flex-wrap gap-2">
             <button
               type="button"
@@ -529,7 +647,7 @@ export function BuildingMapEditor({
             ref={mapLayerRef}
             className={cn(
               "relative",
-              step === "drawing" && "cursor-crosshair",
+              (step === "drawing" || placingKind) && "cursor-crosshair",
             )}
             style={{
               width: fit.fitW > 0 ? fit.fitW : "100%",
@@ -559,7 +677,11 @@ export function BuildingMapEditor({
               getColors={editorColors}
               selectedRegionId={selectedId}
               editMode
-              onRegionClick={step === "idle" ? (region) => selectRoom(region.id) : undefined}
+              onRegionClick={
+                step === "idle" && !placingKind
+                  ? (region) => selectRoom(region.id)
+                  : undefined
+              }
             />
 
             {regions
@@ -571,9 +693,30 @@ export function BuildingMapEditor({
                   colors={editorColors()}
                   selected={selectedId === region.id}
                   editMode
-                  onClick={() => selectRoom(region.id)}
+                  onClick={
+                    placingKind ? undefined : () => selectRoom(region.id)
+                  }
                 />
               ))}
+
+            <MapIconLayer
+              icons={icons}
+              editMode
+              selectedId={selectedIconId}
+              defaultSize={iconSize}
+              onSelect={(id) => {
+                setSelectedIconId(id);
+                setSelectedId(null);
+                setPlacingKind(null);
+              }}
+              onMove={(id, x, y) => {
+                setIcons((prev) =>
+                  prev.map((icon) =>
+                    icon.id === id ? { ...icon, x, y } : icon,
+                  ),
+                );
+              }}
+            />
 
             {step === "drawing" ? (
               <PolygonDraftOverlay

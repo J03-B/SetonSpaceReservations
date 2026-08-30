@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
+import { EmailTemplateCards } from "@/app/manage/email-template-cards";
 import { EventCards, type ManagedEvent } from "@/app/manage/request-cards";
 import { RoomLayoutCards } from "@/app/manage/room-layout-cards";
 import { TempViewForm, type TempViewPerson } from "@/app/manage/temp-view-form";
 import { TrustQueue, type TrustCandidate } from "@/app/manage/trust-queue";
 import { AccessBadge } from "@/components/account/access-badge";
+import { BRAND } from "@/lib/brand";
+import { emailLogoSrc } from "@/lib/email/logo";
+import { emailTemplateCards, EMAIL_PREVIEW_SAMPLE } from "@/lib/email/messages";
 import { cn } from "@/lib/utils";
 
 export type { ManagedEvent };
@@ -30,7 +34,7 @@ function ManageColumn({
   );
 }
 
-export function ManageBoard({
+export async function ManageBoard({
   isAdmin,
   requests,
   reservations,
@@ -43,6 +47,8 @@ export function ManageBoard({
   trustCandidates: TrustCandidate[];
   tempViewPeople: TempViewPerson[];
 }) {
+  const logoSrc = emailLogoSrc() ?? BRAND.logoSrc;
+
   return (
     <div className="space-y-10">
       {isAdmin ? (
@@ -53,6 +59,14 @@ export function ManageBoard({
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             <ManageColumn title="Room layouts" className="min-w-[16rem]">
               <RoomLayoutCards />
+            </ManageColumn>
+            <ManageColumn title="Email templates" className="min-w-[16rem]">
+              <EmailTemplateCards
+                templates={emailTemplateCards({
+                  ...EMAIL_PREVIEW_SAMPLE,
+                  logoSrc,
+                })}
+              />
             </ManageColumn>
             <ManageColumn title="Temporary view" className="min-w-[16rem]">
               <TempViewForm people={tempViewPeople} />

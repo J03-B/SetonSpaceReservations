@@ -16,6 +16,7 @@ interface FloorSwitcherProps {
   chromeMotionMode: ChromeMotionMode;
   onUp: () => void;
   onDown: () => void;
+  embedded?: boolean;
 }
 
 export function FloorSwitcher({
@@ -24,17 +25,30 @@ export function FloorSwitcher({
   chromeMotionMode,
   onUp,
   onDown,
+  embedded = false,
 }: FloorSwitcherProps) {
   const interactive = chromeIsInteractive(visible);
 
   return (
     <div
-      className="pointer-events-none absolute right-4 z-40 flex items-center"
-      style={{ top: MAP_FLOOR_INSET, bottom: MAP_FLOOR_INSET }}
+      className={
+        embedded
+          ? "pointer-events-none flex items-center"
+          : "pointer-events-none absolute right-4 z-50 flex items-center"
+      }
+      style={
+        embedded
+          ? undefined
+          : { top: MAP_FLOOR_INSET, bottom: MAP_FLOOR_INSET }
+      }
     >
       <div
-        className={chromeSlideMotionClass}
-        style={chromeSlideStyle(visible, "x-end", chromeMotionMode)}
+        className={embedded ? undefined : chromeSlideMotionClass}
+        style={
+          embedded
+            ? undefined
+            : chromeSlideStyle(visible, "x-end", chromeMotionMode)
+        }
       >
         <div
           className={cn(

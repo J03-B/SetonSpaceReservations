@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { safeInternalPath } from "@/lib/auth/paths";
-import { AuthFormCard, AuthPageTitle } from "@/components/auth/auth-close-link";
+import {
+  AuthFormCard,
+  AuthPageTitle,
+  authColumnClassName,
+  authPageClassName,
+} from "@/components/auth/auth-close-link";
 import { SignInForm } from "./sign-in-form";
 
 export const metadata = {
@@ -27,14 +32,14 @@ export default async function SignInPage({
   const configured = isSupabaseConfigured();
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-12">
-      <div className="w-full max-w-2xl">
+    <div className={authPageClassName}>
+      <div className={authColumnClassName}>
         <AuthPageTitle>Sign in</AuthPageTitle>
 
         {!configured ? (
           <AuthFormCard role="status">
-            <h2 className="text-2xl font-semibold">Authentication not configured</h2>
-            <p className="mt-3 text-lg text-text-secondary">
+            <h2 className="text-lg font-semibold">Authentication not configured</h2>
+            <p className="mt-2 text-sm text-text-secondary">
               Add the Supabase project URL and publishable key to enable sign-in.
             </p>
             <Link
@@ -54,7 +59,7 @@ export default async function SignInPage({
           </AuthFormCard>
         )}
 
-        <p className="mt-8 text-center text-lg text-text-secondary">
+        <p className="mt-6 text-center text-sm text-text-secondary">
           Don&apos;t have an account?{" "}
           <Link
             href="/sign-up"

@@ -45,6 +45,11 @@ import { regionHasPolygon } from "@/lib/map/region-geometry";
 import { cn } from "@/lib/utils";
 import { useMobileMapMode } from "@/hooks/use-mobile-map-mode";
 import type { DrillCameraState } from "@/lib/map/drill-frame";
+import { MapIconLayer, useMapIcons } from "./map-icon-layer";
+import {
+  DEFAULT_MAP_ICON_SIZE,
+  EMPTY_MAP_ICONS,
+} from "@/lib/map/map-icons";
 
 export interface PendingRect {
   x: number;
@@ -77,6 +82,10 @@ interface InteractiveMapCanvasProps {
   onDrillCameraChange?: (camera: DrillCameraState) => void;
   /** Offset the floor plan into the opening beside the time-range column. */
   fitToChrome?: boolean;
+  /** Floor index for wayfinding icon drafts (`mapId:floorIndex`). */
+  iconFloorIndex?: number;
+  /** Reserve right chrome for the request form. Guests keep left schedule only. */
+  showRequestPanel?: boolean;
   className?: string;
 }
 
@@ -99,11 +108,18 @@ export function InteractiveMapCanvas({
   campusHoldRegion = null,
   onDrillCameraChange,
   fitToChrome = false,
+  iconFloorIndex = 0,
+  showRequestPanel = false,
   className,
 }: InteractiveMapCanvasProps) {
   const isMobileMapMode = useMobileMapMode();
   const isCampus = variant === "campus";
   const isFloor = variant === "floor";
+  const mapIcons = useMapIcons(
+    level.id,
+    iconFloorIndex,
+    level.icons ?? EMPTY_MAP_ICONS,
+  );
   const reserveFloorInset = isFloor && fullBleed;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapLayerRef = useRef<HTMLDivElement>(null);
@@ -125,8 +141,11 @@ export function InteractiveMapCanvas({
   const dimsKey = `${fit.fitW}x${fit.fitH}x${containerSize.w}x${containerSize.h}`;
 
   const chromeInsets = useMemo(
-    () => mapSelectedRoomInsets(containerSize.w),
-    [containerSize.w],
+    () =>
+      mapSelectedRoomInsets(containerSize.w, {
+        requestPanel: Boolean(selectedRegionId) && showRequestPanel,
+      }),
+    [containerSize.w, selectedRegionId, showRequestPanel],
   );
 
   const overviewCamera = useMemo(() => {
@@ -552,6 +571,10 @@ export function InteractiveMapCanvas({
                 draggable={false}
               />
               {regionOverlays}
+              <MapIconLayer
+                icons={mapIcons}
+                defaultSize={level.iconSize ?? DEFAULT_MAP_ICON_SIZE}
+              />
             </div>
           </div>
         </div>

@@ -1,27 +1,39 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
+import {
+  groupManagedRoomsByBuilding,
+  type BuildingRoomGroup,
+} from "@/lib/auth/managed-rooms";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
-import { AuthFormCard, AuthPageTitle } from "@/components/auth/auth-close-link";
-import { AccountSettingsForm, type ManagedSpace } from "./account-settings-form";
+import {
+  AuthFormCard,
+  AuthPageTitle,
+  authColumnClassName,
+  authPageClassName,
+} from "@/components/auth/auth-close-link";
+import { AccountSettingsForm } from "./account-settings-form";
 
 export const metadata = {
   title: "Account",
 };
 
-async function getManagedSpaces(userId: string): Promise<ManagedSpace[]> {
+async function getManagedRoomGroups(
+  userId: string,
+  hasFullCatalogAccess: boolean,
+): Promise<BuildingRoomGroup[]> {
   if (!isSupabaseConfigured()) return [];
 
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("name, building")
-    .eq("manager_id", userId)
+    .select("name, building, manager_id")
     .order("name");
 
-  return (data ?? []).map((row) => ({
-    name: row.name,
-    building: row.building,
-  }));
+  return groupManagedRoomsByBuilding(
+    data ?? [],
+    userId,
+    hasFullCatalogAccess,
+  );
 }
 
 export default async function AccountPage() {
@@ -30,17 +42,16 @@ export default async function AccountPage() {
     redirect("/sign-in?next=/account");
   }
 
-  const managedSpaces =
-    session.accountGroup === "Manager"
-      ? await getManagedSpaces(session.id)
-      : [];
+  const roomGroups = session.isManager
+    ? await getManagedRoomGroups(session.id, session.isTechAdmin)
+    : [];
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-12">
-      <div className="w-full max-w-2xl">
+    <div className={authPageClassName}>
+      <div className={authColumnClassName}>
         <AuthPageTitle>Account</AuthPageTitle>
         <AuthFormCard>
-          <AccountSettingsForm user={session} managedSpaces={managedSpaces} />
+          <AccountSettingsForm user={session} roomGroups={roomGroups} />
         </AuthFormCard>
       </div>
     </div>

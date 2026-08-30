@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { AuthMessage } from "@/components/auth/form-fields";
+import { useActionState, useState } from "react";
+import { AuthMessage, Field, inputClassName } from "@/components/auth/form-fields";
 import {
   decideReservationRequestAction,
   undoReservationApprovalAction,
@@ -141,6 +141,8 @@ function DecisionButtons({
     decideReservationRequestAction,
     {},
   );
+  const [declining, setDeclining] = useState(false);
+  const reasonId = `decline-reason-${requestId}`;
 
   return (
     <div className="mt-4">
@@ -149,43 +151,74 @@ function DecisionButtons({
           <AuthMessage error={state.error} />
         </div>
       ) : null}
-      <div className="flex items-center justify-center gap-2">
-        {hasConflict ? (
-          <span
-            title="Conflicts with another reservation"
-            className="inline-flex size-11 items-center justify-center rounded-full bg-status-pending-bg text-status-pending"
-          >
-            <ConflictIcon />
-            <span className="sr-only">Conflicts with another reservation</span>
-          </span>
-        ) : null}
-        <form action={action}>
-          <input type="hidden" name="request_id" value={requestId} />
-          <input type="hidden" name="decision" value="approved" />
-          <button
-            type="submit"
-            disabled={pending}
-            title="Approve"
-            aria-label="Approve request"
-            className="inline-flex size-11 items-center justify-center rounded-full bg-status-available text-text-inverse hover:opacity-90 disabled:opacity-60"
-          >
-            <CheckIcon />
-          </button>
-        </form>
-        <form action={action}>
+      {declining ? (
+        <form action={action} className="space-y-3">
           <input type="hidden" name="request_id" value={requestId} />
           <input type="hidden" name="decision" value="declined" />
+          <Field id={reasonId} label="Reason for decline" required>
+            <textarea
+              id={reasonId}
+              name="decline_reason"
+              required
+              maxLength={2000}
+              rows={4}
+              className={inputClassName}
+            />
+          </Field>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="submit"
+              disabled={pending}
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-status-danger px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-60"
+            >
+              Send decline
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setDeclining(false)}
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-surface-subtle disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex items-center justify-center gap-2">
+          {hasConflict ? (
+            <span
+              title="Conflicts with another reservation"
+              className="inline-flex size-11 items-center justify-center rounded-full bg-status-pending-bg text-status-pending"
+            >
+              <ConflictIcon />
+              <span className="sr-only">Conflicts with another reservation</span>
+            </span>
+          ) : null}
+          <form action={action}>
+            <input type="hidden" name="request_id" value={requestId} />
+            <input type="hidden" name="decision" value="approved" />
+            <button
+              type="submit"
+              disabled={pending}
+              title="Approve"
+              aria-label="Approve request"
+              className="inline-flex size-11 items-center justify-center rounded-full bg-status-available text-text-inverse hover:opacity-90 disabled:opacity-60"
+            >
+              <CheckIcon />
+            </button>
+          </form>
           <button
-            type="submit"
+            type="button"
             disabled={pending}
             title="Decline"
             aria-label="Decline request"
+            onClick={() => setDeclining(true)}
             className="inline-flex size-11 items-center justify-center rounded-full bg-status-danger text-text-inverse hover:opacity-90 disabled:opacity-60"
           >
             <CloseIcon />
           </button>
-        </form>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,8 +10,14 @@ import {
   accessLabelFor,
   asAccessLevel,
   getSessionUser,
+  type AccessLabel,
 } from "@/lib/auth/session";
 import { formatCampusWhen, toEasternWallClock } from "@/lib/availability/format-when";
+import {
+  groupManagedRoomsByBuilding,
+  type BuildingRoomGroup,
+  type CatalogRoom,
+} from "@/lib/auth/managed-rooms";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -68,7 +74,26 @@ function toEvents(
   );
 }
 
-function withCampusManager(people: TempViewPerson[]): TempViewPerson[] {
+function roomGroupsForAccount(
+  rooms: CatalogRoom[],
+  userId: string,
+  accessLabel: AccessLabel,
+): BuildingRoomGroup[] {
+  if (accessLabel !== "Manager" && accessLabel !== "Admin") {
+    return [];
+  }
+
+  return groupManagedRoomsByBuilding(
+    rooms,
+    userId,
+    accessLabel === "Admin",
+  );
+}
+
+function withCampusManager(
+  people: TempViewPerson[],
+  rooms: CatalogRoom[],
+): TempViewPerson[] {
   if (
     people.some(
       (person) => person.email.toLowerCase() === CAMPUS_MANAGER_EMAIL,
@@ -77,12 +102,16 @@ function withCampusManager(people: TempViewPerson[]): TempViewPerson[] {
     return people;
   }
 
+  const campusManagerId =
+    rooms.find((room) => room.manager_id)?.manager_id ?? "";
+
   return [
     {
-      id: "",
+      id: campusManagerId,
       fullName: "J Benin",
       email: CAMPUS_MANAGER_EMAIL,
       accessLabel: "Manager",
+      roomGroups: roomGroupsForAccount(rooms, campusManagerId, "Manager"),
     },
     ...people,
   ];
@@ -95,7 +124,7 @@ async function getTrustCandidates(): Promise<TrustCandidate[]> {
   const { data } = await supabase
     .from("users")
     .select("id, full_name, email, access_level")
-    .in("access_level", ["none", "requester"])
+    .in("access_level", ["guest", "user"])
     .eq("account_status", "active")
     .order("full_name");
 
@@ -130,15 +159,20 @@ export default async function ManagePage() {
 
   const supabase = await createClient();
   const roomsQuery = session.isTechAdmin
-    ? supabase.from("rooms").select("id, name, building")
+    ? supabase.from("rooms").select("id, name, building, manager_id")
     : supabase
         .from("rooms")
-        .select("id, name, building")
+        .select("id, name, building, manager_id")
         .eq("manager_id", session.id);
 
   const { data: rooms } = await roomsQuery;
   const managedRooms = rooms ?? [];
   const managedRoomIds = managedRooms.map((room) => room.id);
+  const catalogRooms: CatalogRoom[] = managedRooms.map((room) => ({
+    name: room.name,
+    building: room.building,
+    manager_id: room.manager_id,
+  }));
   const roomsById = new Map(
     managedRooms.map((room) => [
       room.id,
@@ -232,14 +266,16 @@ export default async function ManagePage() {
       access_level: string;
     }) => {
       const accessLevel = asAccessLevel(row.access_level);
+      const accessLabel = accessLabelFor(
+        accessLevel,
+        accessLevel === "admin" || isBootstrapAdminEmail(row.email),
+      );
       return {
         id: row.id,
         fullName: row.full_name,
         email: row.email,
-        accessLabel: accessLabelFor(
-          accessLevel,
-          accessLevel === "tech_admin" || isBootstrapAdminEmail(row.email),
-        ),
+        accessLabel,
+        roomGroups: roomGroupsForAccount(catalogRooms, row.id, accessLabel),
       };
     },
   );
@@ -258,7 +294,7 @@ export default async function ManagePage() {
             new Set(),
           )}
           trustCandidates={trustCandidates}
-          tempViewPeople={withCampusManager(directoryPeople)}
+          tempViewPeople={withCampusManager(directoryPeople, catalogRooms)}
         />
       </div>
     </div>

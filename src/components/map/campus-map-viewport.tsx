@@ -35,6 +35,11 @@ import {
 } from "./map-region-overlay";
 import { cn } from "@/lib/utils";
 import { useMobileMapMode } from "@/hooks/use-mobile-map-mode";
+import { MapIconLayer, useMapIcons } from "./map-icon-layer";
+import {
+  CAMPUS_MAP_ICON_SIZE,
+  EMPTY_MAP_ICONS,
+} from "@/lib/map/map-icons";
 
 const ZOOM_REST = 1.2;
 /** Baseline zoom when hovering open campus — proximity ramps up from here */
@@ -506,6 +511,11 @@ export function CampusMapViewport({
   className,
 }: CampusMapViewportProps) {
   const isMobileMapMode = useMobileMapMode();
+  const mapIcons = useMapIcons(
+    level.id,
+    0,
+    level.icons ?? EMPTY_MAP_ICONS,
+  );
   const interactionLocked =
     drillProgress != null ||
     Boolean(drillRegion) ||
@@ -1547,6 +1557,11 @@ export function CampusMapViewport({
                 />
               );
             })}
+
+          <MapIconLayer
+            icons={mapIcons}
+            defaultSize={CAMPUS_MAP_ICON_SIZE}
+          />
 
           {level.logoSrc ? (
             <div

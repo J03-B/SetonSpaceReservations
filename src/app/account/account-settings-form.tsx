@@ -2,9 +2,11 @@
 
 import { useActionState, useEffect, useState } from "react";
 import type { SessionUser } from "@/lib/auth/session";
+import type { BuildingRoomGroup } from "@/lib/auth/managed-rooms";
 import { signOutAction, updateProfileAction } from "@/lib/auth/actions";
 import { stopTempViewAction } from "@/lib/auth/impersonation-actions";
 import { AccessBadge } from "@/components/account/access-badge";
+import { ManagedRoomsList } from "@/components/account/managed-rooms-list";
 import {
   AuthMessage,
   Field,
@@ -14,26 +16,12 @@ import {
 } from "@/components/auth/form-fields";
 import { cn } from "@/lib/utils";
 
-export interface ManagedSpace {
-  name: string;
-  building: string | null;
-}
-
-function formatManagedLabel(spaces: ManagedSpace[]): string {
-  const labels = spaces.map((space) =>
-    space.building ? `${space.name} (${space.building})` : space.name,
-  );
-  if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
-}
-
 export function AccountSettingsForm({
   user,
-  managedSpaces,
+  roomGroups,
 }: {
   user: SessionUser;
-  managedSpaces: ManagedSpace[];
+  roomGroups: BuildingRoomGroup[];
 }) {
   const [profileState, profileAction, profilePending] = useActionState(
     updateProfileAction,
@@ -53,10 +41,10 @@ export function AccountSettingsForm({
     Boolean(profileState?.success) && !isDirty && !profilePending;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {user.isImpersonating ? (
-        <div className="space-y-6">
-          <p className="text-lg text-text-secondary">
+        <div className="space-y-5">
+          <p className="text-sm text-text-secondary">
             Temporary view is on. The site uses this account’s access until you
             disable it.
           </p>
@@ -68,12 +56,7 @@ export function AccountSettingsForm({
               className={`${largeInputClassName} bg-surface-subtle text-text-secondary`}
             />
           </Field>
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-medium leading-none text-text-primary">
-              Access
-            </h2>
-            <AccessBadge label={user.accessLabel} />
-          </div>
+          <AccessSection label={user.accessLabel} roomGroups={roomGroups} />
           <form action={stopTempViewAction}>
             <button type="submit" className={largeButtonClassName}>
               Disable temporary view
@@ -84,7 +67,7 @@ export function AccountSettingsForm({
         <>
       <form
         action={profileAction}
-        className="space-y-6"
+        className="space-y-5"
         onReset={(event) => event.preventDefault()}
       >
         <AuthMessage error={profileState?.error} />
@@ -113,27 +96,16 @@ export function AccountSettingsForm({
             className={largeInputClassName}
           />
         </Field>
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-medium leading-none text-text-primary">
-              Access
-            </h2>
-            <AccessBadge label={user.accessLabel} />
-          </div>
-          {user.accountGroup === "Manager" && managedSpaces.length > 0 ? (
-            <p className="mt-2 text-lg text-text-secondary">
-              Manages {formatManagedLabel(managedSpaces)}
-            </p>
-          ) : null}
-        </div>
-        <div className="pt-8">
+        <AccessSection label={user.accessLabel} roomGroups={roomGroups} />
+        <div className="pt-4">
           <button
             type="submit"
             className={cn(
-              "inline-flex min-h-16 w-full items-center justify-center rounded-lg px-5 py-3 text-lg font-medium text-text-inverse transition-colors duration-500 disabled:opacity-60",
+              largeButtonClassName,
+              "transition-colors duration-500",
               showSaved
                 ? "bg-status-available hover:bg-status-available"
-                : "bg-action-primary hover:bg-action-primary-hover",
+                : null,
             )}
             disabled={profilePending}
             aria-live="polite"
@@ -153,6 +125,26 @@ export function AccountSettingsForm({
       </form>
         </>
       )}
+    </div>
+  );
+}
+
+function AccessSection({
+  label,
+  roomGroups,
+}: {
+  label: SessionUser["accessLabel"];
+  roomGroups: BuildingRoomGroup[];
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <h2 className="text-sm font-medium leading-none text-text-primary">
+          Access
+        </h2>
+        <AccessBadge label={label} />
+      </div>
+      <ManagedRoomsList groups={roomGroups} className="mt-3" />
     </div>
   );
 }

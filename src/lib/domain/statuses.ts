@@ -56,9 +56,11 @@ export const EXTERNAL_ACCESS_STATUSES = [
 export type ExternalAccessStatus = (typeof EXTERNAL_ACCESS_STATUSES)[number];
 
 export const ROLES = [
-  "tech_admin",
-  "space_manager",
-  "requester",
+  "admin",
+  "manager",
+  "trusted user",
+  "user",
+  "guest",
 ] as const;
 
 export type Role = (typeof ROLES)[number];

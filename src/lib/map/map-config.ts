@@ -11,6 +11,10 @@
  * - CATC.png             → Carlo Acutis Tech Center floor plan
  */
 
+import { MAIN_BUILDING_MAP_ICON_SIZE, type MapIconMarker } from "./map-icons";
+
+export type { MapIconMarker } from "./map-icons";
+
 /** Canonical paths to map images in public/map/ */
 export const MAP_IMAGES = {
   campus: "/map/MainMap.png",
@@ -61,6 +65,8 @@ export interface MapFloorSpec {
   imageSrc: string;
   /** When omitted, floor 1 uses the level `regions`; other floors have none. */
   regions?: MapRegion[];
+  /** Wayfinding markers (bathrooms, office) for this floor */
+  icons?: MapIconMarker[];
 }
 
 export interface MapLevel {
@@ -72,6 +78,10 @@ export interface MapLevel {
   /** Parent map for breadcrumbs and drill-up */
   parentMapId?: string;
   regions: MapRegion[];
+  /** Wayfinding markers when this level has no `floors` (or floor 1 fallback) */
+  icons?: MapIconMarker[];
+  /** Default icon width as a percent of map width. Falls back to 4.4. */
+  iconSize?: number;
   /** Stacked floors for this building. Index 0 is the entry floor. */
   floors?: MapFloorSpec[];
 }
@@ -221,6 +231,7 @@ export const MAP_LEVELS: Record<string, MapLevel> = {
     title: "Main Building",
     imageSrc: MAP_IMAGES.mainBuildingFloor1,
     parentMapId: "campus",
+    iconSize: MAIN_BUILDING_MAP_ICON_SIZE,
     floors: [
       {
         number: 1,
@@ -864,6 +875,29 @@ export const MAP_LEVELS: Record<string, MapLevel> = {
         spaceSlug: "fatima",
       },
     ],
+    icons: [
+      {
+        id: "mens-bathroom-kmwn7r",
+        kind: "mens-bathroom",
+        x: 72.28,
+        y: 40.52,
+        size: 4.4,
+      },
+      {
+        id: "womens-bathroom-4rc3p9",
+        kind: "womens-bathroom",
+        x: 72.1,
+        y: 30.94,
+        size: 4.4,
+      },
+      {
+        id: "office-49wqvd",
+        kind: "office",
+        x: 47.59,
+        y: 53.46,
+        size: 4.4,
+      },
+    ],
   },
 };
 
@@ -887,13 +921,19 @@ function withDefaultRoomSlug(region: MapRegion): MapRegion {
 export function getMapFloor(
   level: MapLevel,
   index: number,
-): { number: number; imageSrc: string; regions: MapRegion[] } {
+): {
+  number: number;
+  imageSrc: string;
+  regions: MapRegion[];
+  icons: MapIconMarker[];
+} {
   const floors = level.floors;
   if (!floors?.length) {
     return {
       number: 1,
       imageSrc: level.imageSrc,
       regions: level.regions.map(withDefaultRoomSlug),
+      icons: level.icons ?? [],
     };
   }
   const clamped = Math.min(floors.length - 1, Math.max(0, index));
@@ -904,6 +944,7 @@ export function getMapFloor(
     regions: (floor.regions ?? (clamped === 0 ? level.regions : [])).map(
       withDefaultRoomSlug,
     ),
+    icons: floor.icons ?? (clamped === 0 ? (level.icons ?? []) : []),
   };
 }
 
@@ -913,6 +954,7 @@ export function mapLevelForFloor(level: MapLevel, index: number): MapLevel {
     ...level,
     imageSrc: floor.imageSrc,
     regions: floor.regions,
+    icons: floor.icons,
   };
 }
 

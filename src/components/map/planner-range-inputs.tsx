@@ -73,10 +73,13 @@ const PERIOD_ITEMS = [
 ];
 
 const WHEEL_ITEM_H = 36;
-const WHEEL_VISIBLE_H = 140;
-const WHEEL_SIDE_ITEMS = 3;
+const WHEEL_VISIBLE_ROWS = 3;
+const WHEEL_SIDE_ITEMS = 2;
+const WHEEL_HEIGHT = WHEEL_ITEM_H * WHEEL_VISIBLE_ROWS;
 const WHEEL_DRAG_STEP_PX = WHEEL_ITEM_H;
+const WHEEL_CLICK_PX = 6;
 const WHEEL_GESTURE_RESET_MS = 140;
+const WHEEL_TILT_DEG = 22;
 
 type WheelItem<T> = {
   value: T;
@@ -349,12 +352,21 @@ function TimeWheel<T extends string | number>({
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const moved = drag ? Math.abs(e.clientY - drag.startY) : 0;
     const snapPosition = resolvePosition(visualPositionRef.current);
     dragRef.current = null;
     setDragging(false);
-    if (snapPosition != null) {
+
+    if (drag && moved < WHEEL_CLICK_PX && wheelRef.current) {
+      const rect = wheelRef.current.getBoundingClientRect();
+      const offset = e.clientY - (rect.top + rect.height / 2);
+      const delta = Math.round(offset / WHEEL_ITEM_H);
+      commitPosition(drag.startPosition + delta, true);
+    } else if (snapPosition != null) {
       commitPosition(snapPosition, true);
     }
+
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -431,12 +443,12 @@ function TimeWheel<T extends string | number>({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center">
-      <span className="mb-1 flex h-[14px] items-center text-[10px] font-medium uppercase tracking-wide text-text-secondary">
+      <span className="mb-1 flex h-4 items-center text-xs font-medium uppercase tracking-wide text-text-secondary">
         {label || "\u00A0"}
       </span>
       <div
-        className="relative w-full planner-time-wheel-mask"
-        style={{ height: WHEEL_VISIBLE_H }}
+        className="relative w-full"
+        style={{ height: WHEEL_HEIGHT }}
       >
         <div
           className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-9 -translate-y-1/2 rounded-md border-y border-action-primary/35 bg-action-primary/10"
@@ -455,27 +467,27 @@ function TimeWheel<T extends string | number>({
           onWheel={onWheel}
           onKeyDown={onKeyDown}
           className="planner-time-wheel-scroll relative h-full cursor-grab touch-none overflow-hidden outline-none active:cursor-grabbing"
+          style={{ perspective: "180px" }}
         >
           {visibleItems.map(({ item, position }) => {
             if (!item) return null;
+            const offset = position - visualPosition;
+            const distance = Math.abs(offset);
             const selected = position === nearestPosition;
-            const distance = Math.abs(position - visualPosition);
+            const opacity = distance <= 1 ? 1 : Math.max(0, 2 - distance);
             return (
               <div
-                key={`${String(item.value)}-${position}`}
+                key={String(item.value)}
                 className={cn(
                   "pointer-events-none absolute left-0 right-0 top-1/2 flex h-9 items-center justify-center text-base font-semibold leading-none will-change-transform",
                   dragging
-                    ? "transition-[color,opacity] duration-75"
+                    ? "transition-[color] duration-75"
                     : "transition-[color,opacity,transform] duration-150 ease-out",
-                  selected && "text-action-primary",
-                  !selected && "text-text-secondary",
-                  distance >= 3 && "opacity-35",
-                  distance === 2 && "opacity-60",
-                  distance === 1 && "opacity-80",
+                  selected ? "text-action-primary" : "text-text-secondary",
                 )}
                 style={{
-                  transform: `translateY(calc(-50% + ${(position - visualPosition) * WHEEL_ITEM_H}px))`,
+                  opacity,
+                  transform: `translateY(calc(-50% + ${offset * WHEEL_ITEM_H}px)) rotateX(${offset * -WHEEL_TILT_DEG}deg)`,
                   lineHeight: `${WHEEL_ITEM_H}px`,
                 }}
               >

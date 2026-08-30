@@ -1,4 +1,5 @@
 import type { MapPoint, MapRegion } from "./map-config";
+import type { MapIconMarker } from "./map-icons";
 import { regionHasPolygon } from "./region-geometry";
 
 export interface ObjectContainFit {
@@ -95,6 +96,20 @@ ${indent}  height: ${r.height.toFixed(2)}${pointsBlock}${extra},
 ${indent}}`;
 }
 
+function formatIconBlock(icon: MapIconMarker, indent: string): string {
+  const size =
+    icon.size != null ? `, size: ${icon.size.toFixed(2)}` : "";
+  return `${indent}{ id: "${icon.id}", kind: "${icon.kind}", x: ${icon.x.toFixed(2)}, y: ${icon.y.toFixed(2)}${size} }`;
+}
+
+export function exportIconsArrayTypeScript(icons: MapIconMarker[]): string {
+  if (icons.length === 0) return `icons: [],`;
+  const lines = icons.map((icon) => formatIconBlock(icon, "      ")).join(",\n");
+  return `icons: [
+${lines}
+    ],`;
+}
+
 /** Convert click position on image to percentage coordinates. */
 export function clientToPercent(
   clientX: number,
@@ -171,14 +186,23 @@ export function slugifyId(label: string): string {
 }
 
 /** Export regions as JSON for the configure tool. */
-export function exportRegionsJson(mapId: string, regions: MapRegion[]): string {
-  return JSON.stringify({ mapId, regions }, null, 2);
+export function exportRegionsJson(
+  mapId: string,
+  regions: MapRegion[],
+  icons: MapIconMarker[] = [],
+): string {
+  return JSON.stringify({ mapId, regions, icons }, null, 2);
 }
 
 /** Export stacked floors as JSON — paste back or send for map-config updates. */
 export function exportFloorsJson(
   mapId: string,
-  floors: { number: number; imageSrc: string; regions: MapRegion[] }[],
+  floors: {
+    number: number;
+    imageSrc: string;
+    regions: MapRegion[];
+    icons?: MapIconMarker[];
+  }[],
 ): string {
   return JSON.stringify({ mapId, floors }, null, 2);
 }
@@ -189,6 +213,7 @@ export function exportRegionsTypeScript(
   title: string,
   imageSrc: string,
   regions: MapRegion[],
+  icons: MapIconMarker[] = [],
 ): string {
   const regionLines = regions
     .map((r) => formatRegionBlock(r, "      "))
@@ -201,6 +226,7 @@ export function exportRegionsTypeScript(
     regions: [
 ${regionLines}
     ],
+    ${exportIconsArrayTypeScript(icons)}
   },`;
 }
 
@@ -215,9 +241,14 @@ ${regionLines}
     ],`;
 }
 
-/** Export stacked floors + floor-1 regions for map-config.ts */
+/** Export stacked floors + floor-1 regions/icons for map-config.ts */
 export function exportStackedFloorsTypeScript(
-  floors: { number: number; imageSrc: string; regions: MapRegion[] }[],
+  floors: {
+    number: number;
+    imageSrc: string;
+    regions: MapRegion[];
+    icons?: MapIconMarker[];
+  }[],
 ): string {
   const floorBlocks = floors.map((floor) => {
     const regionLines = floor.regions
@@ -227,16 +258,27 @@ export function exportStackedFloorsTypeScript(
       floor.regions.length > 0
         ? `[\n${regionLines}\n        ]`
         : "[]";
+    const iconLines = (floor.icons ?? [])
+      .map((icon) => formatIconBlock(icon, "          "))
+      .join(",\n");
+    const iconsBody =
+      (floor.icons ?? []).length > 0
+        ? `[\n${iconLines}\n        ]`
+        : "[]";
     return `    {
       number: ${floor.number},
       imageSrc: "${floor.imageSrc}",
       regions: ${regionsBody},
+      icons: ${iconsBody},
     }`;
   });
 
   const floorOneRegions = floors[0]?.regions ?? [];
+  const floorOneIcons = floors[0]?.icons ?? [];
 
   return `${exportRegionsArrayTypeScript(floorOneRegions)}
+
+${exportIconsArrayTypeScript(floorOneIcons)}
 
 floors: [
 ${floorBlocks.join(",\n")}

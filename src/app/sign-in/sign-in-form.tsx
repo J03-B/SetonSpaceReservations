@@ -28,7 +28,7 @@ function ContinueSpinner() {
     <>
       <span className="sr-only">Sending code</span>
       <span
-        className="size-6 animate-spin rounded-full border-2 border-text-inverse/25 border-t-text-inverse"
+        className="size-5 animate-spin rounded-full border-2 border-text-inverse/25 border-t-text-inverse"
         aria-hidden
       />
     </>
@@ -135,7 +135,7 @@ function CodeBoxes({
           onKeyDown={(event) => handleKeyDown(event, index)}
           onPaste={(event) => handlePaste(event, index)}
           onFocus={(event) => event.currentTarget.select()}
-          className="min-h-16 min-w-0 flex-1 rounded-lg border border-border bg-surface text-center text-3xl font-semibold text-text-primary"
+          className="h-16 min-w-0 flex-1 rounded-lg border-2 border-border-strong bg-surface-strong text-center text-2xl font-semibold leading-none text-text-primary"
         />
       ))}
     </div>
@@ -260,8 +260,8 @@ function SignInFormFields({
     const canResend = remaining <= 0 && !sendPending;
 
     return (
-      <div className="space-y-8">
-        <p className="text-center text-lg text-text-secondary">
+      <div className="space-y-6">
+        <p className="text-center text-sm text-text-secondary">
           We sent a 6-digit code to {email}.
         </p>
         <form
@@ -282,7 +282,7 @@ function SignInFormFields({
               />
             </div>
           </Field>
-          <div className="grid min-h-16">
+          <div className="grid min-h-11">
             <button
               type="submit"
               className={cn(
@@ -306,7 +306,7 @@ function SignInFormFields({
             {hasVerifyError ? (
               <p
                 role="alert"
-                className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-16 items-center justify-center px-2 text-center text-lg font-medium text-status-danger"
+                className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-11 items-center justify-center px-2 text-center text-sm font-medium text-status-danger"
               >
                 {verifyState?.error}
               </p>
@@ -368,7 +368,7 @@ function SignInFormFields({
           className={largeInputClassName}
         />
       </Field>
-      <div className="grid min-h-16">
+      <div className="grid min-h-11">
         <button
           type="submit"
           className={cn(
@@ -395,7 +395,7 @@ function SignInFormFields({
           <p
             id="sign-in-email-error"
             role="alert"
-            className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-16 items-center justify-center px-2 text-center text-lg font-medium text-status-danger"
+            className="sign-in-continue-error-text col-start-1 row-start-1 flex min-h-11 items-center justify-center px-2 text-center text-sm font-medium text-status-danger"
           >
             {sendState?.error}
           </p>

@@ -1,8 +1,10 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import { ManagedRoomsList } from "@/components/account/managed-rooms-list";
 import { AuthMessage } from "@/components/auth/form-fields";
 import { startTempViewAction } from "@/lib/auth/impersonation-actions";
+import type { BuildingRoomGroup } from "@/lib/auth/managed-rooms";
 import type { AccessLabel } from "@/lib/auth/session";
 
 export interface TempViewPerson {
@@ -10,6 +12,7 @@ export interface TempViewPerson {
   fullName: string;
   email: string;
   accessLabel: AccessLabel;
+  roomGroups: BuildingRoomGroup[];
 }
 
 const VISIBLE_CARDS = 2;
@@ -62,6 +65,7 @@ export function TempViewForm({ people }: { people: TempViewPerson[] }) {
                 <p className="mt-1 truncate text-sm text-text-secondary">
                   {person.email}
                 </p>
+                <ManagedRoomsList groups={person.roomGroups} className="mt-3" />
               </button>
             </form>
           </li>

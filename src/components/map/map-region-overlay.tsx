@@ -39,6 +39,9 @@ const FLOOR_STROKE_REST = 2;
 const FLOOR_STROKE_HOVER = 6;
 const FLOOR_STROKE_SELECTED = 7;
 const INACTIVE_LABEL_SCALE = 0.5;
+const LABEL_FIT_PAD_RATIO = 0.08;
+const LABEL_FIT_PAD_MIN_PX = 4;
+const LABEL_FIT_MIN_SCALE = 0.2;
 export const INACTIVE_REGION_COLORS = {
   fill: "transparent",
   stroke: "transparent",
@@ -673,6 +676,160 @@ export function MapRegionSvgLayer({
   );
 }
 
+function FittedRegionLabel({
+  region,
+  sublabel,
+  mobileMode,
+  mapRotated,
+  isHovered,
+  isSelected,
+  isDimmed,
+  regionActive,
+  floorLabels,
+}: {
+  region: MapRegion;
+  sublabel?: string;
+  mobileMode: boolean;
+  mapRotated: boolean;
+  isHovered: boolean;
+  isSelected: boolean;
+  isDimmed: boolean;
+  regionActive: boolean;
+  floorLabels: boolean;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+  const anchor = regionLabelAnchor(region);
+  const interactionScale = !regionActive
+    ? INACTIVE_LABEL_SCALE
+    : floorLabels
+      ? isSelected
+        ? FLOOR_LABEL_SELECTED_SCALE
+        : isDimmed
+          ? FLOOR_LABEL_DIMMED_SCALE
+          : isHovered
+            ? FLOOR_LABEL_HOVER_SCALE
+            : 1
+      : 1;
+  const labelScale = Math.min(interactionScale, fitScale);
+  const baseTransform = mapRotated
+    ? "translate(-50%, -50%) rotate(-90deg)"
+    : "translate(-50%, -50%)";
+  const labelLines =
+    region.mapLabelLines && region.mapLabelLines.length > 0
+      ? region.mapLabelLines
+      : [region.label];
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const content = contentRef.current;
+    if (!wrap || !content) return;
+
+    let frame = 0;
+    let observedParent: Element | null = null;
+    const observer = new ResizeObserver(() => measure());
+
+    const measure = () => {
+      const parent = wrap.offsetParent as HTMLElement | null;
+      if (!parent) {
+        frame = window.requestAnimationFrame(measure);
+        return;
+      }
+      if (observedParent !== parent) {
+        if (observedParent) observer.unobserve(observedParent);
+        observer.observe(parent);
+        observedParent = parent;
+      }
+
+      const boxW = (region.width / 100) * parent.clientWidth;
+      const boxH = (region.height / 100) * parent.clientHeight;
+      const padX = Math.max(LABEL_FIT_PAD_MIN_PX, boxW * LABEL_FIT_PAD_RATIO);
+      const padY = Math.max(LABEL_FIT_PAD_MIN_PX, boxH * LABEL_FIT_PAD_RATIO);
+      const availW = Math.max(8, boxW - padX * 2);
+      const availH = Math.max(8, boxH - padY * 2);
+      const naturalW = content.offsetWidth;
+      const naturalH = content.offsetHeight;
+      if (naturalW <= 0 || naturalH <= 0) return;
+
+      const localW = mapRotated ? availH : availW;
+      const localH = mapRotated ? availW : availH;
+      const next = Math.min(localW / naturalW, localH / naturalH);
+      const clamped = Math.min(
+        1,
+        Math.max(LABEL_FIT_MIN_SCALE, Number.isFinite(next) ? next : 1),
+      );
+      setFitScale((prev) => (Math.abs(prev - clamped) < 0.001 ? prev : clamped));
+    };
+
+    observer.observe(content);
+    measure();
+    window.addEventListener("resize", measure);
+    const fonts = document.fonts;
+    void fonts?.ready.then(measure);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [
+    mapRotated,
+    mobileMode,
+    region.height,
+    region.label,
+    region.mapLabelLines,
+    region.width,
+    sublabel,
+  ]);
+
+  return (
+    <div
+      ref={wrapRef}
+      className={cn(
+        "pointer-events-none absolute z-10 origin-center",
+        isDimmed && "opacity-30",
+      )}
+      style={{
+        left: `${anchor.x}%`,
+        top: `${anchor.y}%`,
+        transform: `${baseTransform} scale(${labelScale})`,
+        transitionProperty:
+          floorLabels && regionActive ? "transform, opacity" : "opacity",
+        transitionDuration:
+          floorLabels && regionActive ? `${FLOOR_HOVER_MS}ms` : "150ms",
+        transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+      }}
+    >
+      <div
+        ref={contentRef}
+        className="flex flex-col items-center gap-0.5 text-center"
+      >
+        <span
+          className={cn(
+            "rounded-lg bg-surface/94 font-semibold text-text-primary shadow-sm backdrop-blur-[1px]",
+            mobileMode
+              ? "px-3 py-1.5 text-lg leading-tight"
+              : "px-4 py-2 text-[22px] leading-tight sm:text-2xl",
+            labelLines.length === 1 && "whitespace-nowrap",
+          )}
+        >
+          {labelLines.map((line) => (
+            <span key={line} className="block">
+              {line}
+            </span>
+          ))}
+        </span>
+        {sublabel ? (
+          <span className="rounded bg-surface/90 px-1.5 py-0.5 text-[10px] font-medium text-action-primary">
+            {sublabel}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function MapRegionLabelLayer({
   regions,
   getSublabel,
@@ -698,8 +855,6 @@ export function MapRegionLabelLayer({
   return (
     <>
       {labeledRegions.map((region) => {
-        const anchor = regionLabelAnchor(region);
-        const sublabel = getSublabel?.(region);
         const isHovered =
           hoveredRegionId === region.id ||
           hoveredRegionId === regionHoverGroupId(region);
@@ -708,67 +863,20 @@ export function MapRegionLabelLayer({
           selectedRegionId && selectedRegionId !== region.id,
         );
         const regionActive = isRegionActive?.(region) ?? true;
-        const labelScale = !regionActive
-          ? INACTIVE_LABEL_SCALE
-          : floorLabels
-            ? isSelected
-              ? FLOOR_LABEL_SELECTED_SCALE
-              : isDimmed
-                ? FLOOR_LABEL_DIMMED_SCALE
-                : isHovered
-                  ? FLOOR_LABEL_HOVER_SCALE
-                  : 1
-            : 1;
-        const baseTransform = mapRotated
-          ? "translate(-50%, -50%) rotate(-90deg)"
-          : "translate(-50%, -50%)";
-        const labelLines =
-          region.mapLabelLines && region.mapLabelLines.length > 0
-            ? region.mapLabelLines
-            : [region.label];
 
         return (
-          <div
+          <FittedRegionLabel
             key={region.id}
-            className={cn(
-              "pointer-events-none absolute z-10 flex flex-col items-center gap-0.5 text-center",
-              isDimmed && "opacity-30",
-            )}
-            style={{
-              left: `${anchor.x}%`,
-              top: `${anchor.y}%`,
-              transform: `${baseTransform} scale(${labelScale})`,
-              transitionProperty: floorLabels && regionActive
-                ? "transform, opacity"
-                : "opacity",
-              transitionDuration:
-                floorLabels && regionActive
-                  ? `${FLOOR_HOVER_MS}ms`
-                  : "150ms",
-              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
-            }}
-          >
-            <span
-              className={cn(
-                "rounded-lg bg-surface/94 font-semibold text-text-primary shadow-sm backdrop-blur-[1px]",
-                mobileMode
-                  ? "max-w-[15rem] px-3 py-1.5 text-lg leading-tight"
-                  : "max-w-[24rem] px-4 py-2 text-[22px] leading-tight sm:text-2xl",
-                labelLines.length === 1 && "whitespace-nowrap",
-              )}
-            >
-              {labelLines.map((line) => (
-                <span key={line} className="block">
-                  {line}
-                </span>
-              ))}
-            </span>
-            {sublabel ? (
-              <span className="rounded bg-surface/90 px-1.5 py-0.5 text-[10px] font-medium text-action-primary">
-                {sublabel}
-              </span>
-            ) : null}
-          </div>
+            region={region}
+            sublabel={getSublabel?.(region)}
+            mobileMode={mobileMode}
+            mapRotated={mapRotated}
+            isHovered={isHovered}
+            isSelected={isSelected}
+            isDimmed={isDimmed}
+            regionActive={regionActive}
+            floorLabels={floorLabels}
+          />
         );
       })}
     </>

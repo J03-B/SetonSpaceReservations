@@ -3,7 +3,6 @@ import { ManageBoard, type ManagedEvent } from "@/app/manage/manage-board";
 import type { TempViewPerson } from "@/app/manage/temp-view-form";
 import type { TrustCandidate } from "@/app/manage/trust-queue";
 import { AuthMessage } from "@/components/auth/form-fields";
-import { applyEmailReservationDecision, verifyEmailDeclineLink } from "@/lib/auth/reservation-actions";
 import {
   CAMPUS_MANAGER_EMAIL,
   isBootstrapAdminEmail,
@@ -20,6 +19,7 @@ import {
   type BuildingRoomGroup,
   type CatalogRoom,
 } from "@/lib/auth/managed-rooms";
+import { readManageFlash } from "@/lib/auth/email-decision";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -30,6 +30,7 @@ type TimeRow = {
   id: string;
   title: string | null;
   description: string | null;
+  decline_reason?: string | null;
   status: string;
   start_at: string;
   end_at: string;
@@ -55,12 +56,16 @@ function toEvents(
   roomsById: Map<string, { name: string; building: string }>,
   usersById: Map<string, { fullName: string; email: string }>,
   conflictIds: Set<string>,
+  whyFrom: "description" | "decline" = "description",
 ): ManagedEvent[] {
   return sortByWhen(
     rows.map((row) => {
       const room = roomsById.get(row.room_id);
       const requester = usersById.get(row.requester_id);
-      const why = row.description?.trim() || "—";
+      const why =
+        whyFrom === "decline"
+          ? row.decline_reason?.trim() || "—"
+          : row.description?.trim() || "—";
       return {
         id: row.id,
         title: room?.name ?? row.title?.trim() ?? "Room",
@@ -174,49 +179,39 @@ export default async function ManagePage({
     token?: string;
     notice?: string;
     decline?: string;
+    approve?: string;
   }>;
 }) {
   const params = await searchParams;
-  const session = await getSessionUser();
   const emailQuery = new URLSearchParams();
   if (params.request) emailQuery.set("request", params.request);
   if (params.decision) emailQuery.set("decision", params.decision);
   if (params.token) emailQuery.set("token", params.token);
-  const manageNext =
-    emailQuery.toString().length > 0
-      ? `/manage?${emailQuery.toString()}`
-      : "/manage";
+  if (params.request && params.decision && params.token) {
+    redirect(`/manage/decision?${emailQuery.toString()}`);
+  }
+
+  const session = await getSessionUser();
 
   if (!session) {
-    redirect(`/sign-in?next=${encodeURIComponent(manageNext)}`);
+    redirect(`/sign-in?next=${encodeURIComponent("/manage")}`);
   }
   if (!session.isManager) {
     redirect("/");
   }
 
-  if (params.request && params.decision && params.token) {
-    if (params.decision === "declined") {
-      const result = await verifyEmailDeclineLink({
-        requestId: params.request,
-        token: params.token,
-      });
-      if (result.notice !== "decline-form") {
-        redirect(`/manage?notice=${result.notice}`);
-      }
-      redirect(`/manage?request=${encodeURIComponent(params.request)}&decline=1`);
-    }
-
-    const result = await applyEmailReservationDecision({
-      requestId: params.request,
-      decision: params.decision,
-      token: params.token,
-    });
-    redirect(`/manage?notice=${result.notice}`);
-  }
-
-  const notice = emailDecisionNotice(params.notice);
+  const flash = await readManageFlash();
+  const notice = emailDecisionNotice(
+    flash?.kind === "error" ? flash.notice : params.notice,
+  );
   const openDeclineRequestId =
-    params.decline === "1" && params.request ? params.request : undefined;
+    flash?.kind === "decline"
+      ? flash.requestId
+      : params.decline === "1" && params.request
+        ? params.request
+        : undefined;
+  const approvedRequestId =
+    flash?.kind === "approved" ? flash.requestId : params.request;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -250,6 +245,7 @@ export default async function ManagePage({
   );
 
   let requestRows: TimeRow[] = [];
+  let declinedRows: TimeRow[] = [];
   let reservationRows: TimeRow[] = [];
 
   if (session.isTechAdmin || managedRoomIds.length > 0) {
@@ -260,6 +256,13 @@ export default async function ManagePage({
       )
       .eq("status", "pending")
       .order("start_at");
+    let declinedQuery = supabase
+      .from("reservation_requests")
+      .select(
+        "id, title, description, decline_reason, status, start_at, end_at, room_id, requester_id",
+      )
+      .eq("status", "declined")
+      .order("start_at", { ascending: false });
     let reservationQuery = supabase
       .from("reservations_confirmed")
       .select(
@@ -271,14 +274,17 @@ export default async function ManagePage({
 
     if (!session.isTechAdmin) {
       requestQuery = requestQuery.in("room_id", managedRoomIds);
+      declinedQuery = declinedQuery.in("room_id", managedRoomIds);
       reservationQuery = reservationQuery.in("room_id", managedRoomIds);
     }
 
-    const [requestResult, reservationResult] = await Promise.all([
+    const [requestResult, declinedResult, reservationResult] = await Promise.all([
       requestQuery,
+      declinedQuery,
       reservationQuery,
     ]);
     requestRows = requestResult.data ?? [];
+    declinedRows = declinedResult.data ?? [];
     reservationRows = reservationResult.data ?? [];
   }
 
@@ -291,6 +297,9 @@ export default async function ManagePage({
     openDeclineRequestId && !declineTarget
       ? emailDecisionNotice("already")
       : notice;
+  const noticeApproved =
+    (params.notice === "approved" || flash?.kind === "approved") &&
+    !shownNotice.error;
 
   const conflictIds = new Set(
     requestRows
@@ -311,7 +320,9 @@ export default async function ManagePage({
 
   const requesterIds = [
     ...new Set(
-      [...requestRows, ...reservationRows].map((row) => row.requester_id),
+      [...requestRows, ...declinedRows, ...reservationRows].map(
+        (row) => row.requester_id,
+      ),
     ),
   ];
 
@@ -329,6 +340,51 @@ export default async function ManagePage({
       { fullName: row.full_name, email: row.email },
     ]),
   );
+
+  let approvedEvent: ManagedEvent | undefined;
+  if (noticeApproved && approvedRequestId) {
+    const { data: approvedRow } = await supabase
+      .from("reservation_requests")
+      .select(
+        "id, title, description, status, start_at, end_at, room_id, requester_id",
+      )
+      .eq("id", approvedRequestId)
+      .maybeSingle();
+    if (approvedRow) {
+      if (!roomsById.has(approvedRow.room_id)) {
+        const { data: room } = await supabase
+          .from("rooms")
+          .select("id, name, building")
+          .eq("id", approvedRow.room_id)
+          .maybeSingle();
+        if (room) {
+          roomsById.set(room.id, {
+            name: room.name,
+            building: room.building ?? "Campus",
+          });
+        }
+      }
+      if (!usersById.has(approvedRow.requester_id)) {
+        const { data: requester } = await supabase
+          .from("users")
+          .select("id, full_name, email")
+          .eq("id", approvedRow.requester_id)
+          .maybeSingle();
+        if (requester) {
+          usersById.set(requester.id, {
+            fullName: requester.full_name,
+            email: requester.email,
+          });
+        }
+      }
+      approvedEvent = toEvents(
+        [approvedRow],
+        roomsById,
+        usersById,
+        new Set(),
+      )[0];
+    }
+  }
 
   const [trustCandidates, directoryResult] = await Promise.all([
     session.isTechAdmin ? getTrustCandidates() : Promise.resolve([]),
@@ -362,14 +418,21 @@ export default async function ManagePage({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-6">
       <h1 className="text-center text-3xl font-semibold">Manage</h1>
-      {shownNotice.success || shownNotice.error ? (
+      {shownNotice.error ? (
         <div className="mx-auto mt-6 max-w-xl">
-          <AuthMessage success={shownNotice.success} error={shownNotice.error} />
+          <AuthMessage error={shownNotice.error} />
         </div>
       ) : null}
       <div className="mt-8">
         <ManageBoard
           isAdmin={session.isTechAdmin}
+          rejected={toEvents(
+            declinedRows,
+            roomsById,
+            usersById,
+            new Set(),
+            "decline",
+          )}
           requests={toEvents(requestRows, roomsById, usersById, conflictIds)}
           reservations={toEvents(
             reservationRows,
@@ -380,6 +443,8 @@ export default async function ManagePage({
           trustCandidates={trustCandidates}
           tempViewPeople={withCampusManager(directoryPeople, catalogRooms)}
           openDeclineRequestId={declineTarget}
+          approvedEvent={approvedEvent}
+          noticeApproved={noticeApproved}
         />
       </div>
     </div>

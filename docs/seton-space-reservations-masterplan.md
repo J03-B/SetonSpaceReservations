@@ -2506,7 +2506,26 @@ Migration or Rollback: None
 Documents Updated: this master plan
 ```
 
+### Recorded decision: D-2026-08-30-manage-admin-queue-cards
+
+```text
+Decision ID: D-2026-08-30-manage-admin-queue-cards
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Temporary view cards listed managed rooms, so few accounts fit. Trusted access used a full-width Approve button. The owner asked for name and email only, at most three people, paging arrows, and trusted-access check/X controls matching pending requests.
+Decision: Temporary view shows name and email only. Search remains. Each column shows at most three people, with previous/next arrows when there are more. Trusted access cards are compact: name and email on the left, a green check to approve and a red X to decline, using the same 44px circular controls as pending requests. The X removes that person from the current Manage visit; it does not change access_level. Approve still calls approve_trusted_user server-side.
+Alternatives Considered: Keep room lists on Temporary view; persist trusted declines in the database.
+Security Impact: Authorization stays server-side. Temporary view still requires a Tech Admin session. Approve still uses the existing RPC. Decline-on-this-visit is display-only.
+Privacy Impact: Public calendar still shows status and time only. Manage still lists guest and user emails only to admins.
+Accessibility Impact: Search is labeled. Paging arrows are 44px with Previous page / Next page names. Check and X have accessible names; color is not the only signal.
+Operational Impact: Refreshing Manage restores people skipped with X until a later persist decision.
+Migration or Rollback: src/app/manage/temp-view-form.tsx, src/app/manage/trust-queue.tsx, src/app/manage/queue-pager.tsx
+Documents Updated: this master plan
+```
+
 ### Recorded decision: D-2026-08-30-guest-no-request-panel
+
 
 ```text
 Decision ID: D-2026-08-30-guest-no-request-panel
@@ -2548,7 +2567,7 @@ Documents Updated: this master plan
 Decision ID: D-2026-08-30-request-notice-actions
 Date: 2026-08-30
 Owner: Product owner (chat request)
-Status: Approved
+Status: Approved; auto-apply superseded by D-2026-08-30-email-decision-dialog
 Context: The manager request-notice email listed requester then request ID, with no overlap summary and no way to decide from the message.
 Decision: After Requester, the notice lists Conflicts: overlapping pending requests and confirmed reservations for that room and time, or None. Before Request ID, a green Approve button and a red Decline button link to /manage with a signed token. Opening the link goes to Manage. If the manager is already signed in, the decision is applied and Manage shows a confirmation. If they are signed out, sign-in returns them to that Manage URL and then applies the decision. Email decline stores the reason “Declined from the request notice.” Authorization stays server-side; the token is not a substitute for a manager session. Public views still show status and time only.
 Alternatives Considered: Open Manage without applying; require a typed decline reason from the email.
@@ -2755,6 +2774,96 @@ Privacy Impact: None.
 Accessibility Impact: Request ID remains visible labeled text.
 Operational Impact: None.
 Migration or Rollback: src/lib/email/layout.ts; src/app/manage/email-template-cards.tsx
+Documents Updated: this master plan, style guide §16.3
+```
+
+### Recorded decision: D-2026-08-30-email-decision-dialog
+
+```text
+Decision ID: D-2026-08-30-email-decision-dialog
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved; confirm-before-apply superseded by D-2026-08-30-decision-celebration
+Context: Approve from the manager notice applied during /manage render, which crashed the page after the reservation was saved (revalidatePath during render). Decline opened an inline reason form on the card. Style guide §10.6 requires a confirmation dialog for approve and decline.
+Decision: Email Approve and Decline verify the signed token, then open Manage with a confirmation dialog. They do not apply the decision on GET. Approve confirms in the dialog, then applies. Decline requires a reason in that dialog before the rejection is saved. After either decision, the same dialog reports that the request was approved or declined. Manage check/X buttons use the same dialogs. Public views still show status and time only. Authorization stays server-side.
+Alternatives Considered: Keep auto-apply from the email link; keep the inline decline form.
+Security Impact: The token still only proves the link is not a CSRF of the request id. Apply still requires a manager session for that room.
+Privacy Impact: None beyond the existing manager notice.
+Accessibility Impact: Dialogs have a title, consequence, labeled reason on decline, specific Approve/Decline, Cancel, and Done. Escape and overlay cancel before a decision is saved.
+Operational Impact: Existing notice links that still point at /manage?decision=&token= are redirected to /manage/decision, then to the confirm dialog.
+Migration or Rollback: src/app/manage/decision/route.ts; src/app/manage/decision-dialog.tsx; src/lib/auth/email-decision.ts; src/app/manage/page.tsx; src/app/manage/request-cards.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-manage-event-tables
+
+```text
+Decision ID: D-2026-08-30-manage-event-tables
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: Current reservations used stacked field rows inside a narrow column, so the box did not fit. The owner asked for table columns and a rejected queue to the left of pending.
+Decision: Manager queues are three equal-width tables in this order: Rejected Requests, Pending Requests, Confirmed Reservations. Each table uses Where, Who, When, Why, and Actions. Rows have a divider. Pending keeps approve/decline. Confirmed keeps undo. Rejected has no row action. Status in the database remains declined; the column title is Rejected Requests as requested. Public views still show status and time only.
+Alternatives Considered: Keep stacked cards; title the first column Declined Requests per style-guide “Decline”.
+Security Impact: Authorization stays server-side. Managers still only see rooms they manage.
+Privacy Impact: Requester identity stays on Manage only, not on public calendars.
+Accessibility Impact: Tables have column headers and a caption matching the section title. Action buttons keep accessible names.
+Operational Impact: Declined reservation_requests rows appear in Rejected Requests.
+Migration or Rollback: None
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-manage-queue-columns
+
+```text
+Decision ID: D-2026-08-30-manage-queue-columns
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Supersedes: the equal-width all-columns layout in D-2026-08-30-manage-event-tables
+Context: Pending needed more horizontal space. Rejected and Confirmed did not need Where, When, or Actions.
+Decision: Rejected Requests and Confirmed Reservations show only Who and Why. Rejected Why is the manager decline reason. Confirmed Why is the requester’s reason. Pending keeps Where, Who, When, Why, and Actions and is wider than the side queues. Column headers are centered in their columns. Confirmed undo is not shown in this compact layout. Public views still show status and time only.
+Alternatives Considered: Keep five columns on all three tables; keep Confirmed undo in an Actions column.
+Security Impact: Authorization stays server-side. Managers still only see rooms they manage.
+Privacy Impact: Requester identity stays on Manage only, not on public calendars.
+Accessibility Impact: Tables keep captions and column headers. Pending action buttons keep accessible names.
+Operational Impact: Confirmed reservations cannot be undone from the Manage table until undo is restored.
+Migration or Rollback: src/app/manage/request-cards.tsx; src/app/manage/manage-board.tsx; src/app/manage/page.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-decision-celebration
+
+```text
+Decision ID: D-2026-08-30-decision-celebration
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Context: The owner asked that Approve not use Approve/Cancel. After the request is saved, a popup should celebrate with green confetti, say Request Approved!, show email-style details, and close with an X. Decline should use the same detail layout, a reason field, and Finalize Rejection.
+Decision: Email Approve and the Manage check apply immediately (not during page render). Manage then shows Request Approved! with green confetti, email-style Space/When/Reason/Requester/Request ID cards, and only an X to close. Email Decline and the Manage X open the same detail layout with a required reason and Finalize Rejection. X or Escape closes without declining. Confetti is skipped when the user prefers reduced motion. Public views still show status and time only. Authorization stays server-side.
+Alternatives Considered: Keep a confirm-before-approve dialog; a Done button after approve.
+Security Impact: Apply still requires a manager session for that room. Email links still use a signed token. Apply runs in a route handler or server action, not during /manage render.
+Privacy Impact: Requester identity stays in the manager popup, not on public calendars.
+Accessibility Impact: The approved dialog is named Request Approved! The only control is Close. Decline has a labeled Reason field and Finalize Rejection. Reduced motion disables confetti.
+Operational Impact: Existing /manage?decision=&token= links still go to /manage/decision.
+Migration or Rollback: src/app/manage/decision/route.ts; src/app/manage/decision-dialog.tsx; src/app/manage/request-cards.tsx; src/app/manage/page.tsx
+Documents Updated: this master plan
+```
+
+### Recorded decision: D-2026-08-30-email-decision-links
+
+```text
+Decision ID: D-2026-08-30-email-decision-links
+Date: 2026-08-30
+Owner: Product owner (chat request)
+Status: Approved
+Decision: Manager notice Approve and Decline stay matching colored containers side by side (green Approve, red Decline) with the same href shape: /manage/decision?request=&decision=&token=. The handler verifies the token, then redirects to /manage with no query. If sign-in is required, the token is stored in an httpOnly cookie and sign-in returns to /manage/decision with no query. Approved celebration and decline reason still open from a short-lived httpOnly flash cookie, not from the URL. Public views still show status and time only. Authorization stays server-side.
+Alternatives Considered: Stacked underlined text links; keep notice= and decline= query params after apply.
+Security Impact: The signed token is not kept on the Manage URL or the sign-in next path. Apply still requires a manager session for that room.
+Privacy Impact: Requester identity stays in the manager popup, not on public calendars.
+Accessibility Impact: Approve and Decline remain distinct link text.
+Operational Impact: Existing /manage?decision=&token= links still bounce to /manage/decision, then to /manage.
+Migration or Rollback: src/lib/email/layout.ts; src/app/manage/decision/route.ts; src/lib/auth/email-decision.ts; src/app/manage/page.tsx; src/app/manage/request-cards.tsx; src/lib/auth/reservation-actions.ts
 Documents Updated: this master plan, style guide §16.3
 ```
 

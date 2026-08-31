@@ -131,7 +131,7 @@ const CARD_TONES: Record<
 
 function copyableIdHtml(label: string, value: string): string {
   const id = escapeHtml(value);
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0;">
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; margin: 0;">
                   <tr>
                     <td valign="middle" width="1%" style="padding-right: 10px; font-size: 16px; line-height: 1.4; color: #5c6678; white-space: nowrap; text-align: left;">
                       ${escapeHtml(label)}
@@ -144,7 +144,7 @@ function copyableIdHtml(label: string, value: string): string {
 }
 
 function fieldLabelHtml(label: string): string {
-  return `<p style="margin: 16px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678; text-align: center;">
+  return `<p align="center" style="margin: 16px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${escapeHtml(label)}
                 </p>`;
 }
@@ -163,7 +163,6 @@ function detailCardHtml(input: {
   const nowrap = input.compact || isCode ? " white-space: nowrap;" : "";
   const weight = isCode ? " font-weight: 600;" : "";
   const tracking = isCode ? " letter-spacing: 0.28em;" : "";
-  const align = "center";
   const eyebrow = input.eyebrow?.trim();
   const body = input.lines
     .map((line, index) => {
@@ -180,15 +179,15 @@ function detailCardHtml(input: {
           ? tone.accent
           : "#1a2332";
       const margin = eyebrow || index > 0 ? "6px 0 0" : "0";
-      return `<p style="margin: ${margin}; font-size: ${size}; line-height: 1.5; color: ${color}; text-align: ${align};${nowrap}${weight}${tracking}">${html}</p>`;
+      return `<p align="center" style="margin: ${margin}; font-size: ${size}; line-height: 1.5; color: ${color}; text-align: center;${nowrap}${weight}${tracking}">${html}</p>`;
     })
     .join("");
   const eyebrowHtml = eyebrow
-    ? `<p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: ${tone.accent};">${escapeHtml(eyebrow)}</p>`
+    ? `<p align="center" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: ${tone.accent}; text-align: center;">${escapeHtml(eyebrow)}</p>`
     : "";
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 8px 0 0; border: 1px solid ${tone.border}; border-radius: 10px; background: ${tone.background};">
+  return `<table role="presentation" width="100%" align="center" cellpadding="0" cellspacing="0" style="width: 100%; margin: 8px 0 0; border: 1px solid ${tone.border}; border-radius: 10px; background: ${tone.background};">
                   <tr>
-                    <td style="padding: ${isCode ? "16px 14px" : "12px 14px"}; text-align: ${align};">
+                    <td align="center" style="padding: ${isCode ? "16px 14px" : "12px 14px"}; text-align: center;">
                       ${eyebrowHtml}${body}
                     </td>
                   </tr>
@@ -207,7 +206,7 @@ function conflictCardHtml(lines: string[]): string {
 
 function buttonHtml(button: EmailButtonRow["buttons"][number]): string {
   const background = button.kind === "approve" ? "#1a7f4b" : "#b42318";
-  return `<a href="${escapeHtml(button.href)}" style="display: inline-block; background: ${background}; color: #ffffff; font-size: 14px; font-weight: 600; line-height: 1.2; text-decoration: none; padding: 12px 18px; border-radius: 8px;">${escapeHtml(button.label)}</a>`;
+  return `<a href="${escapeHtml(button.href)}" rel="noreferrer" style="display: inline-block; background: ${background}; color: #ffffff; font-size: 14px; font-weight: 600; line-height: 1.2; text-decoration: none; padding: 12px 18px; border-radius: 8px;">${escapeHtml(button.label)}</a>`;
 }
 
 function rowHtml(row: EmailRow): string {
@@ -285,20 +284,20 @@ function footerParts(content: EmailContent, fontSize: string, marginTop: string)
       pieces.length === 1
         ? pieces[0]
         : `${actionHtml}<span style="padding: 0 10px; color: #b8c0ce;">|</span>${questionsHtml}`;
-    return `<p style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678;">
+    return `<p align="center" style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${body}
                 </p>`;
   }
 
   return `${
     actionHtml
-      ? `<p style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678;">
+      ? `<p align="center" style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${actionHtml}
                 </p>`
       : ""
   }${
     questionsHtml
-      ? `<p style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678;">
+      ? `<p align="center" style="margin: ${marginTop} 0 0; font-size: ${fontSize}; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${questionsHtml}
                 </p>`
       : ""
@@ -323,17 +322,17 @@ export function renderSetonEmail(content: EmailContent): {
     ? footerParts(content, fontSize, "16px")
     : "";
   const headingHtml = content.heading
-    ? `<p style="margin: 28px 0 0; font-size: 22px; font-weight: 600; color: #1a2332;">
+    ? `<p align="center" style="margin: 28px 0 0; font-size: 22px; font-weight: 600; color: #1a2332; text-align: center;">
                   ${escapeHtml(content.heading)}
                 </p>`
     : "";
   const introHtml = content.intro
-    ? `<p style="margin: 20px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678;">
+    ? `<p align="center" style="margin: 20px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${escapeHtml(content.intro)}
                 </p>`
     : "";
   const introAfterHtml = content.introAfter
-    ? `<p style="margin: 12px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678;">
+    ? `<p align="center" style="margin: 12px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${escapeHtml(content.introAfter)}
                 </p>`
     : "";
@@ -341,9 +340,9 @@ export function renderSetonEmail(content: EmailContent): {
   const hasCopyableId = content.rows.some(
     (row) => !("buttons" in row) && !("conflicts" in row) && !("parts" in row) && row.copyable,
   );
-  const cardPadding = hasCopyableId ? "40px 32px 24px" : "40px 32px";
+  const cardPadding = hasCopyableId ? "32px 20px 20px" : "32px 20px";
   const afterRowsHtml = content.afterRows
-    ? `<p style="margin: 16px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678;">
+    ? `<p align="center" style="margin: 16px 0 0; font-size: 16px; line-height: 1.5; color: #5c6678; text-align: center;">
                   ${escapeHtml(content.afterRows)}
                 </p>`
     : "";
@@ -353,14 +352,15 @@ export function renderSetonEmail(content: EmailContent): {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
   </head>
-  <body style="margin: 0; padding: 0; background: #f7f8fa;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f7f8fa">
+  <body style="margin: 0; padding: 0; width: 100%; background: #f7f8fa; -webkit-text-size-adjust: 100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background: #f7f8fa;">
       <tr>
-        <td align="center" style="padding: 40px 16px">
-          <table role="presentation" width="420" cellpadding="0" cellspacing="0" style="background: #ffffff; border: 1px solid #d8dde6; border-radius: 12px;">
+        <td align="center" style="padding: 24px 12px; text-align: center;">
+          <table role="presentation" width="100%" align="center" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 420px; margin: 0 auto; background: #ffffff; border: 1px solid #d8dde6; border-radius: 12px;">
             <tr>
-              <td style="padding: ${cardPadding}; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-align: center;">
+              <td align="center" style="padding: ${cardPadding}; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-align: center;">
                 ${brandHeaderHtml(content.logoSrc)}
                 ${headingHtml}
                 ${introHtml}

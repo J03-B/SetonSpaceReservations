@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { CAMPUS_MANAGER_EMAIL } from "@/lib/auth/config";
+import { MANAGE_FLASH_COOKIE } from "@/lib/auth/email-decision";
 import { TEMP_VIEW_BLOCKED } from "@/lib/auth/impersonation";
 import { getAuthUser, getSessionUser } from "@/lib/auth/session";
 import { toEasternWallClock, parseStoredTimestamp } from "@/lib/availability/format-when";
@@ -20,7 +22,6 @@ import {
   sendRequesterSubmittedEmail,
   sendReservationDecisionEmail,
 } from "@/lib/email/reservation-decision";
-import { verifyEmailDecisionToken } from "@/lib/email/decision-link";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export type RequestDecisionState = {
@@ -557,70 +558,6 @@ export async function applyReservationDecision(input: {
   return { ok: true, kind: "approved" };
 }
 
-export async function applyEmailReservationDecision(input: {
-  requestId: string;
-  decision: string;
-  token: string;
-}): Promise<{ notice: string; error?: string }> {
-  if (input.decision !== "approved") {
-    return { notice: "invalid", error: "That email link is invalid." };
-  }
-  if (!verifyEmailDecisionToken(input.requestId, "approved", input.token)) {
-    return { notice: "invalid", error: "That email link is invalid." };
-  }
-
-  const result = await applyReservationDecision({
-    requestId: input.requestId,
-    decision: "approved",
-  });
-
-  if (result.ok) {
-    return { notice: result.kind };
-  }
-  return { notice: result.notice, error: result.error };
-}
-
-export async function verifyEmailDeclineLink(input: {
-  requestId: string;
-  token: string;
-}): Promise<{ notice: string }> {
-  if (!verifyEmailDecisionToken(input.requestId, "declined", input.token)) {
-    return { notice: "invalid" };
-  }
-  if (!isSupabaseConfigured()) {
-    return { notice: "error" };
-  }
-
-  const session = await getSessionUser();
-  if (session?.isImpersonating || !session?.isManager) {
-    return { notice: "denied" };
-  }
-
-  const supabase = await createClient();
-  const { data: request } = await supabase
-    .from("reservation_requests")
-    .select("id, room_id, status")
-    .eq("id", input.requestId)
-    .maybeSingle();
-
-  if (!request || request.status !== "pending") {
-    return { notice: "already" };
-  }
-
-  if (!session.isTechAdmin) {
-    const { data: room } = await supabase
-      .from("rooms")
-      .select("manager_id")
-      .eq("id", request.room_id)
-      .maybeSingle();
-    if (room?.manager_id !== session.id) {
-      return { notice: "denied" };
-    }
-  }
-
-  return { notice: "decline-form" };
-}
-
 export async function decideReservationRequestAction(
   _prev: RequestDecisionState,
   formData: FormData,
@@ -641,10 +578,19 @@ export async function decideReservationRequestAction(
     declineReason: typeof rawReason === "string" ? rawReason : "",
   });
   if (!result.ok) return { error: result.error };
-  if (decision === "declined") {
-    redirect("/manage?notice=declined");
+  const store = await cookies();
+  store.delete(MANAGE_FLASH_COOKIE);
+  if (decision === "approved") {
+    redirect(
+      `/manage?notice=approved&request=${encodeURIComponent(requestId)}`,
+    );
   }
-  return {};
+  redirect("/manage");
+}
+
+export async function consumeManageFlashAction() {
+  const store = await cookies();
+  store.delete(MANAGE_FLASH_COOKIE);
 }
 
 export async function undoReservationApprovalAction(

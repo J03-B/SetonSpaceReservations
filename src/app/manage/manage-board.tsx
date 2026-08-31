@@ -36,18 +36,24 @@ function ManageColumn({
 
 export async function ManageBoard({
   isAdmin,
+  rejected,
   requests,
   reservations,
   trustCandidates,
   tempViewPeople,
   openDeclineRequestId,
+  approvedEvent,
+  noticeApproved,
 }: {
   isAdmin: boolean;
+  rejected: ManagedEvent[];
   requests: ManagedEvent[];
   reservations: ManagedEvent[];
   trustCandidates: TrustCandidate[];
   tempViewPeople: TempViewPerson[];
   openDeclineRequestId?: string;
+  approvedEvent?: ManagedEvent;
+  noticeApproved?: boolean;
 }) {
   const logoSrc = emailLogoSrc() ?? BRAND.logoSrc;
 
@@ -88,19 +94,40 @@ export async function ManageBoard({
           <AccessBadge label="Manager" className="px-4 py-2 text-lg font-semibold" />
         </h2>
         <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-          <ManageColumn title="Requests" className="min-w-[28rem] flex-[1.6]">
+          <ManageColumn
+            title="Rejected Requests"
+            className="min-w-[22rem] flex-[0.85]"
+          >
+            <EventCards
+              items={rejected}
+              caption="Rejected Requests"
+              empty="No rejected requests"
+              columns="who-why"
+            />
+          </ManageColumn>
+          <ManageColumn
+            title="Pending Requests"
+            className="min-w-[36rem] flex-[2]"
+          >
             <EventCards
               items={requests}
+              caption="Pending Requests"
               empty="No pending requests"
               showDecisions
               openDeclineRequestId={openDeclineRequestId}
+              approvedEvent={approvedEvent}
+              noticeApproved={noticeApproved}
             />
           </ManageColumn>
-          <ManageColumn title="Current reservations" className="min-w-[16rem]">
+          <ManageColumn
+            title="Confirmed Reservations"
+            className="min-w-[22rem] flex-[0.85]"
+          >
             <EventCards
               items={reservations}
-              empty="No approved reservations"
-              showUndo
+              caption="Confirmed Reservations"
+              empty="No confirmed reservations"
+              columns="who-why"
             />
           </ManageColumn>
         </div>

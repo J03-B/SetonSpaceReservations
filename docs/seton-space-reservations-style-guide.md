@@ -929,6 +929,7 @@ Do not show internal notes.
 
 - Keep the first paragraph useful, or omit it when the heading and Status card are enough.
 - Include one primary action link.
+- Manager notice Approve and Decline are matching colored action containers side by side: green Approve, red Decline. They use the same link shape.
 - Do not include internal notes.
 - Do not overuse branding.
 - Include the time zone.

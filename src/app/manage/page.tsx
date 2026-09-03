@@ -3,10 +3,7 @@ import { ManageBoard, type ManagedEvent } from "@/app/manage/manage-board";
 import type { TempViewPerson } from "@/app/manage/temp-view-form";
 import type { TrustCandidate } from "@/app/manage/trust-queue";
 import { AuthMessage } from "@/components/auth/form-fields";
-import {
-  CAMPUS_MANAGER_EMAIL,
-  isBootstrapAdminEmail,
-} from "@/lib/auth/config";
+import { CAMPUS_MANAGER_EMAIL } from "@/lib/auth/config";
 import {
   accessLabelFor,
   asAccessLevel,
@@ -29,8 +26,8 @@ export const metadata = {
 type TimeRow = {
   id: string;
   title: string | null;
-  description: string | null;
-  decline_reason?: string | null;
+  reason: string | null;
+  decision_reason?: string | null;
   status: string;
   start_at: string;
   end_at: string;
@@ -56,7 +53,7 @@ function toEvents(
   roomsById: Map<string, { name: string; building: string }>,
   usersById: Map<string, { fullName: string; email: string }>,
   conflictIds: Set<string>,
-  whyFrom: "description" | "decline" = "description",
+  whyFrom: "reason" | "decline" = "reason",
 ): ManagedEvent[] {
   return sortByWhen(
     rows.map((row) => {
@@ -64,8 +61,8 @@ function toEvents(
       const requester = usersById.get(row.requester_id);
       const why =
         whyFrom === "decline"
-          ? row.decline_reason?.trim() || "—"
-          : row.description?.trim() || "—";
+          ? row.decision_reason?.trim() || "—"
+          : row.reason?.trim() || "—";
       return {
         id: row.id,
         title: room?.name ?? row.title?.trim() ?? "Room",
@@ -130,13 +127,13 @@ async function getTrustCandidates(): Promise<TrustCandidate[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("users")
-    .select("id, full_name, email, access_level")
-    .in("access_level", ["guest", "user"])
+    .select("id, full_name, email, spaces_access_level")
+    .in("spaces_access_level", ["guest", "user"])
     .eq("account_status", "active")
     .order("full_name");
 
   return (data ?? []).map((row) => {
-    const accessLevel = asAccessLevel(row.access_level);
+    const accessLevel = asAccessLevel(row.spaces_access_level);
     return {
       id: row.id,
       fullName: row.full_name,
@@ -250,25 +247,25 @@ export default async function ManagePage({
 
   if (session.isTechAdmin || managedRoomIds.length > 0) {
     let requestQuery = supabase
-      .from("reservation_requests")
+      .from("reservations")
       .select(
-        "id, title, description, status, start_at, end_at, room_id, requester_id",
+        "id, title, reason, status, start_at, end_at, room_id, requester_id",
       )
       .eq("status", "pending")
       .order("start_at");
     let declinedQuery = supabase
-      .from("reservation_requests")
+      .from("reservations")
       .select(
-        "id, title, description, decline_reason, status, start_at, end_at, room_id, requester_id",
+        "id, title, reason, decision_reason, status, start_at, end_at, room_id, requester_id",
       )
-      .eq("status", "declined")
+      .eq("status", "denied")
       .order("start_at", { ascending: false });
     let reservationQuery = supabase
-      .from("reservations_confirmed")
+      .from("reservations")
       .select(
-        "id, title, description, status, start_at, end_at, room_id, requester_id",
+        "id, title, reason, status, start_at, end_at, room_id, requester_id",
       )
-      .eq("status", "active")
+      .eq("status", "accepted")
       .gte("end_at", toEasternWallClock(new Date()))
       .order("start_at");
 
@@ -344,9 +341,9 @@ export default async function ManagePage({
   let approvedEvent: ManagedEvent | undefined;
   if (noticeApproved && approvedRequestId) {
     const { data: approvedRow } = await supabase
-      .from("reservation_requests")
+      .from("reservations")
       .select(
-        "id, title, description, status, start_at, end_at, room_id, requester_id",
+        "id, title, reason, status, start_at, end_at, room_id, requester_id",
       )
       .eq("id", approvedRequestId)
       .maybeSingle();
@@ -401,10 +398,7 @@ export default async function ManagePage({
       access_level: string;
     }) => {
       const accessLevel = asAccessLevel(row.access_level);
-      const accessLabel = accessLabelFor(
-        accessLevel,
-        accessLevel === "admin" || isBootstrapAdminEmail(row.email),
-      );
+      const accessLabel = accessLabelFor(accessLevel, accessLevel === "admin");
       return {
         id: row.id,
         fullName: row.full_name,

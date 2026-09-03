@@ -203,7 +203,7 @@ export async function updateProfileAction(
   if (fullName.length < 2) {
     return {
       error: "Review the highlighted fields and try again.",
-      fieldErrors: { full_name: "Enter your full name." },
+      fieldErrors: { full_name: "Enter your name." },
     };
   }
 

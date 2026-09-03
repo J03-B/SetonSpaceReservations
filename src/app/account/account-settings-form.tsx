@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { profileNameInput } from "@/lib/auth/profile-name";
 import type { SessionUser } from "@/lib/auth/session";
 import type { BuildingRoomGroup } from "@/lib/auth/managed-rooms";
 import { signOutAction, updateProfileAction } from "@/lib/auth/actions";
@@ -27,7 +28,9 @@ export function AccountSettingsForm({
     updateProfileAction,
     null,
   );
-  const [fullName, setFullName] = useState(user.fullName);
+  const [fullName, setFullName] = useState(
+    profileNameInput(user.fullName, user.email),
+  );
 
   useEffect(() => {
     if (profileState?.savedFullName) {
@@ -35,7 +38,9 @@ export function AccountSettingsForm({
     }
   }, [profileState?.savedFullName]);
 
-  const savedName = profileState?.savedFullName ?? user.fullName;
+  const savedName =
+    profileState?.savedFullName ??
+    profileNameInput(user.fullName, user.email);
   const isDirty = fullName.trim() !== savedName.trim();
   const showSaved =
     Boolean(profileState?.success) && !isDirty && !profilePending;
@@ -81,7 +86,7 @@ export function AccountSettingsForm({
         </Field>
         <Field
           id="full_name"
-          label="Full name"
+          label="Name"
           error={profileState?.fieldErrors?.full_name}
           size="lg"
         >

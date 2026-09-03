@@ -126,8 +126,8 @@ export async function submitReservationRequestAction(input: {
   }
 
   const { data: ownPending, error: ownPendingError } = await supabase
-    .from("reservation_requests")
-    .select("id, start_at, end_at, description, created_at")
+    .from("reservations")
+    .select("id, start_at, end_at, reason, created_at")
     .eq("room_id", room.id)
     .eq("requester_id", session.id)
     .eq("status", "pending")
@@ -139,11 +139,11 @@ export async function submitReservationRequestAction(input: {
   }
 
   const { data: ownReserved, error: ownReservedError } = await supabase
-    .from("reservations_confirmed")
+    .from("reservations")
     .select("start_at, end_at")
     .eq("room_id", room.id)
     .eq("requester_id", session.id)
-    .eq("status", "active");
+    .eq("status", "accepted");
 
   if (ownReservedError) {
     console.error("own reserved lookup failed:", ownReservedError.message);
@@ -175,7 +175,7 @@ export async function submitReservationRequestAction(input: {
   }
 
   const mergedReason = mergeRequestReasons(
-    matching.map((row) => row.description ?? ""),
+    matching.map((row) => row.reason ?? ""),
     description,
   );
   if (mergedReason.length > 2000) {
@@ -210,7 +210,7 @@ export async function submitReservationRequestAction(input: {
       const unchanged =
         parseStoredTimestamp(keeper.start_at).getTime() === remainder.start &&
         parseStoredTimestamp(keeper.end_at).getTime() === remainder.end &&
-        (keeper.description ?? "").trim() === mergedReason;
+        (keeper.reason ?? "").trim() === mergedReason;
       if (unchanged) {
         return { id: keeper.id, startAt: pendingStart, endAt: pendingEnd };
       }
@@ -236,12 +236,12 @@ export async function submitReservationRequestAction(input: {
     }
 
     const { data: created, error } = await supabase
-      .from("reservation_requests")
+      .from("reservations")
       .insert({
         room_id: room.id,
         requester_id: session.id,
         title: room.name,
-        description: mergedReason,
+        reason: mergedReason,
         start_at: pendingStart,
         end_at: pendingEnd,
         status: "pending",
@@ -393,9 +393,9 @@ export async function applyReservationDecision(input: {
 
   const supabase = await createClient();
   const { data: request } = await supabase
-    .from("reservation_requests")
+    .from("reservations")
     .select(
-      "id, room_id, requester_id, title, description, start_at, end_at, status",
+      "id, room_id, requester_id, title, reason, start_at, end_at, status",
     )
     .eq("id", input.requestId)
     .maybeSingle();
@@ -470,12 +470,12 @@ export async function applyReservationDecision(input: {
     }
 
     const { error } = await supabase
-      .from("reservation_requests")
+      .from("reservations")
       .update({
-        status: "declined",
-        declined_by: decidedById,
-        declined_at: decidedAt.toISOString(),
-        decline_reason: declineReason,
+        status: "denied",
+        decision_by: decidedById,
+        decision_at: decidedAt.toISOString(),
+        decision_reason: declineReason,
       })
       .eq("id", request.id);
     if (error) {
@@ -496,13 +496,15 @@ export async function applyReservationDecision(input: {
   }
 
   const { data: existing } = await supabase
-    .from("reservations_confirmed")
-    .select("start_at, end_at")
+    .from("reservations")
+    .select("id, start_at, end_at")
     .eq("room_id", request.room_id)
-    .eq("status", "active");
+    .eq("status", "accepted");
 
-  const conflict = (existing ?? []).some((row) =>
-    rangesOverlap(request.start_at, request.end_at, row.start_at, row.end_at),
+  const conflict = (existing ?? []).some(
+    (row) =>
+      row.id !== request.id &&
+      rangesOverlap(request.start_at, request.end_at, row.start_at, row.end_at),
   );
   if (conflict) {
     return {
@@ -512,39 +514,22 @@ export async function applyReservationDecision(input: {
     };
   }
 
-  const { error: insertError } = await supabase
-    .from("reservations_confirmed")
-    .insert({
-      request_id: request.id,
-      room_id: request.room_id,
-      requester_id: request.requester_id,
-      title: request.title,
-      description: request.description,
-      start_at: request.start_at,
-      end_at: request.end_at,
-      approved_by: decidedById,
-      approved_at: decidedAt.toISOString(),
-      status: "active",
-    });
-
-  if (insertError) {
-    return {
-      ok: false,
-      error: "That time conflicts with a current reservation.",
-      notice: "conflict",
-    };
-  }
-
   const { error: updateError } = await supabase
-    .from("reservation_requests")
-    .update({ status: "approved" })
-    .eq("id", request.id);
+    .from("reservations")
+    .update({
+      status: "accepted",
+      decision_by: decidedById,
+      decision_at: decidedAt.toISOString(),
+      decision_reason: null,
+    })
+    .eq("id", request.id)
+    .eq("status", "pending");
 
   if (updateError) {
     return {
       ok: false,
-      error: "The request was reserved but could not be marked approved.",
-      notice: "error",
+      error: "That time conflicts with a current reservation.",
+      notice: "conflict",
     };
   }
 
@@ -616,16 +601,13 @@ export async function undoReservationApprovalAction(
 
   const supabase = await createClient();
   const { data: reservation } = await supabase
-    .from("reservations_confirmed")
-    .select("id, room_id, request_id, status")
+    .from("reservations")
+    .select("id, room_id, status")
     .eq("id", reservationId)
     .maybeSingle();
 
-  if (!reservation || reservation.status !== "active") {
+  if (!reservation || reservation.status !== "accepted") {
     return { error: "That reservation is no longer current." };
-  }
-  if (!reservation.request_id) {
-    return { error: "That reservation is not linked to a request." };
   }
 
   if (!session.isTechAdmin) {
@@ -639,28 +621,20 @@ export async function undoReservationApprovalAction(
     }
   }
 
-  const { data: deleted, error: deleteError } = await supabase
-    .from("reservations_confirmed")
-    .delete()
-    .eq("id", reservation.id)
-    .eq("status", "active")
-    .select("id");
-
-  if (deleteError || !deleted?.length) {
-    return { error: "The reservation could not be returned to requests. Try again." };
-  }
-
   const { data: restored, error: updateError } = await supabase
-    .from("reservation_requests")
-    .update({ status: "pending" })
-    .eq("id", reservation.request_id)
-    .eq("status", "approved")
+    .from("reservations")
+    .update({
+      status: "pending",
+      decision_by: null,
+      decision_at: null,
+      decision_reason: null,
+    })
+    .eq("id", reservation.id)
+    .eq("status", "accepted")
     .select("id");
 
   if (updateError || !restored?.length) {
-    return {
-      error: "The reservation was released but the request could not be returned to the queue.",
-    };
+    return { error: "The reservation could not be returned to requests. Try again." };
   }
 
   revalidatePath("/");

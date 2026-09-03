@@ -56,7 +56,7 @@ export function SignUpForm() {
         setSubmittedSnapshot(snapshot);
       }}
     >
-      <Field id="full_name" label="Full name" size="lg">
+      <Field id="full_name" label="Name" size="lg">
         <input
           id="full_name"
           name="full_name"

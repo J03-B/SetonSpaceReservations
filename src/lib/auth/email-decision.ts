@@ -124,7 +124,7 @@ export async function verifyEmailDecisionLink(input: {
 
   const supabase = await createClient();
   const { data: request } = await supabase
-    .from("reservation_requests")
+    .from("reservations")
     .select("id, room_id, status")
     .eq("id", input.requestId)
     .maybeSingle();

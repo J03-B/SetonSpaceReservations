@@ -13,38 +13,21 @@ export async function getOwnOccupancyRanges(
   if (!isSupabaseConfigured()) return [];
 
   const supabase = await createClient();
-  const [pendingResult, reservedResult] = await Promise.all([
-    supabase
-      .from("reservation_requests")
-      .select("room_id, start_at, end_at")
-      .eq("requester_id", userId)
-      .eq("status", "pending"),
-    supabase
-      .from("reservations_confirmed")
-      .select("room_id, start_at, end_at")
-      .eq("requester_id", userId)
-      .eq("status", "active"),
-  ]);
+  const { data, error } = await supabase
+    .from("reservations")
+    .select("room_id, start_at, end_at, status")
+    .eq("requester_id", userId)
+    .in("status", ["pending", "accepted"]);
 
-  if (pendingResult.error) {
-    console.error("own pending ranges failed:", pendingResult.error.message);
-  }
-  if (reservedResult.error) {
-    console.error("own reserved ranges failed:", reservedResult.error.message);
+  if (error) {
+    console.error("own occupancy ranges failed:", error.message);
+    return [];
   }
 
-  return [
-    ...(pendingResult.data ?? []).map((row) => ({
-      spaceId: row.room_id,
-      startAt: row.start_at,
-      endAt: row.end_at,
-      kind: "pending" as const,
-    })),
-    ...(reservedResult.data ?? []).map((row) => ({
-      spaceId: row.room_id,
-      startAt: row.start_at,
-      endAt: row.end_at,
-      kind: "reserved" as const,
-    })),
-  ];
+  return (data ?? []).map((row) => ({
+    spaceId: row.room_id,
+    startAt: row.start_at,
+    endAt: row.end_at,
+    kind: row.status === "accepted" ? ("reserved" as const) : ("pending" as const),
+  }));
 }

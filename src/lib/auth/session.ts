@@ -1,7 +1,4 @@
-import {
-  isBootstrapAdminEmail,
-  isCampusManagerEmail,
-} from "@/lib/auth/config";
+import { isCampusManagerEmail } from "@/lib/auth/config";
 import { readTempViewUserId } from "@/lib/auth/impersonation";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
@@ -44,7 +41,7 @@ type UserRow = {
   full_name: string | null;
   account_status: string | null;
   email_verified_at: string | null;
-  access_level: string | null;
+  spaces_access_level: string | null;
 };
 
 export function asAccessLevel(value: string | null | undefined): AccessLevel {
@@ -77,9 +74,8 @@ function toSessionUser(
   impersonation?: { realAdminEmail: string },
 ): SessionUser {
   const email = row.email;
-  const storedAccess = asAccessLevel(row.access_level);
-  const isTechAdmin =
-    storedAccess === "admin" || isBootstrapAdminEmail(email);
+  const storedAccess = asAccessLevel(row.spaces_access_level);
+  const isTechAdmin = storedAccess === "admin";
   const isCampusManager = isCampusManagerEmail(email);
   const isManager = storedAccess === "manager" || isTechAdmin || isCampusManager;
   const accessLevel: AccessLevel =
@@ -115,7 +111,7 @@ function toSessionUser(
 }
 
 const USER_COLUMNS =
-  "id, email, full_name, account_status, email_verified_at, access_level";
+  "id, email, full_name, account_status, email_verified_at, spaces_access_level";
 
 async function loadAuthProfile() {
   if (!isSupabaseConfigured()) {
@@ -148,7 +144,7 @@ async function loadAuthProfile() {
           full_name: user.email ?? "Account",
           account_status: "active",
           email_verified_at: user.email_confirmed_at ?? null,
-          access_level: isCampusManagerEmail(user.email ?? "")
+          spaces_access_level: isCampusManagerEmail(user.email ?? "")
             ? "manager"
             : "guest",
         },

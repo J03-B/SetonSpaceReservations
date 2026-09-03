@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 import { safeInternalPath } from "@/lib/auth/paths";
+import {
+  getAuthCookieOptions,
+  getCanonicalOrigin,
+} from "@/lib/supabase/cookies";
+import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 
 const AUTH_ENTRY_PREFIXES = ["/sign-in", "/sign-up"];
 const PROTECTED_PREFIXES = ["/account", "/manage"];
@@ -24,6 +28,15 @@ function copyCookies(from: NextResponse, to: NextResponse): NextResponse {
 }
 
 export async function updateSession(request: NextRequest) {
+  const canonicalOrigin = getCanonicalOrigin(request.nextUrl.hostname);
+  if (canonicalOrigin) {
+    const destination = new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      canonicalOrigin,
+    );
+    return NextResponse.redirect(destination, 308);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabaseUrl = getSupabaseUrl();
@@ -33,7 +46,9 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  const cookieOptions = getAuthCookieOptions(request.nextUrl.hostname);
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookieOptions,
     cookies: {
       getAll() {
         return request.cookies.getAll();

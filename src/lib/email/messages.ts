@@ -158,8 +158,8 @@ export const EMAIL_PREVIEW_SAMPLE: ReservationEmailFields = {
       when: "Sat, Sep 12, 4:00 PM–6:00 PM",
     },
   ],
-  approveHref: `${BRAND.siteUrl}/manage/decision?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=approved&token={token}`,
-  declineHref: `${BRAND.siteUrl}/manage/decision?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=declined&token={token}`,
+  approveHref: `${BRAND.siteUrl}/config/decision?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=approved&token={token}`,
+  declineHref: `${BRAND.siteUrl}/config/decision?request=8f3c2a91-4b6e-4d12-9a70-1c2e8b4f6d33&decision=declined&token={token}`,
 };
 
 export const EMAIL_RAW_FIELDS: ReservationEmailFields = {

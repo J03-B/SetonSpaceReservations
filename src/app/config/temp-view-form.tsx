@@ -5,7 +5,7 @@ import {
   PersonLines,
   QueuePager,
   pageQueue,
-} from "@/app/manage/queue-pager";
+} from "@/app/config/queue-pager";
 import { AuthMessage } from "@/components/auth/form-fields";
 import { startTempViewAction } from "@/lib/auth/impersonation-actions";
 import type { BuildingRoomGroup } from "@/lib/auth/managed-rooms";

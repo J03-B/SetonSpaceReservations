@@ -40,7 +40,7 @@ export async function approveTrustedUserAction(
     return { error: "Could not approve trusted access. Try again." };
   }
 
-  revalidatePath("/manage");
+  revalidatePath("/config");
   revalidatePath("/account");
   return { success: "Trusted access approved." };
 }

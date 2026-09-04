@@ -78,12 +78,12 @@ export function HeaderNav({
         {isManager ? (
           <li>
             <Link
-              href="/manage"
+              href="/config"
               title="Manage"
-              aria-current={pathname === "/manage" ? "page" : undefined}
+              aria-current={pathname === "/config" ? "page" : undefined}
               className={cn(
                 iconLinkClassName,
-                pathname === "/manage" && "bg-surface-subtle text-text-primary",
+                pathname === "/config" && "bg-surface-subtle text-text-primary",
               )}
             >
               <ManageIcon />

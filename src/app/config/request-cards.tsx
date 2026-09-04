@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   ApprovedDialog,
   DeclineDialog,
-} from "@/app/manage/decision-dialog";
-import { PersonLines } from "@/app/manage/queue-pager";
+} from "@/app/config/decision-dialog";
+import { PersonLines } from "@/app/config/queue-pager";
 import { AuthMessage } from "@/components/auth/form-fields";
 import {
   consumeManageFlashAction,
@@ -242,7 +242,7 @@ export function EventCards({
     setDeclineItem(null);
     void consumeManageFlashAction();
     if (fromEmailDecline) {
-      router.replace("/manage", { scroll: false });
+      router.replace("/config", { scroll: false });
     }
   }
 

@@ -5,7 +5,7 @@ import {
   PersonLines,
   QueuePager,
   pageQueue,
-} from "@/app/manage/queue-pager";
+} from "@/app/config/queue-pager";
 import { AuthMessage } from "@/components/auth/form-fields";
 import type { AccessLabel } from "@/lib/auth/session";
 import { approveTrustedUserAction } from "@/lib/auth/trust-actions";

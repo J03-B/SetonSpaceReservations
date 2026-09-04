@@ -266,7 +266,7 @@ export async function submitReservationRequestAction(input: {
   }
 
   revalidatePath("/");
-  revalidatePath("/manage");
+  revalidatePath("/config");
 
   const { data: assignedManagerEmails } = await supabase.rpc(
     "room_manager_notice_emails",
@@ -486,7 +486,7 @@ export async function applyReservationDecision(input: {
       };
     }
     revalidatePath("/");
-    revalidatePath("/manage");
+    revalidatePath("/config");
     try {
       await notify("declined", declineReason);
     } catch (error) {
@@ -534,7 +534,7 @@ export async function applyReservationDecision(input: {
   }
 
   revalidatePath("/");
-  revalidatePath("/manage");
+  revalidatePath("/config");
   try {
     await notify("approved");
   } catch (error) {
@@ -567,10 +567,10 @@ export async function decideReservationRequestAction(
   store.delete(MANAGE_FLASH_COOKIE);
   if (decision === "approved") {
     redirect(
-      `/manage?notice=approved&request=${encodeURIComponent(requestId)}`,
+      `/config?notice=approved&request=${encodeURIComponent(requestId)}`,
     );
   }
-  redirect("/manage");
+  redirect("/config");
 }
 
 export async function consumeManageFlashAction() {
@@ -638,6 +638,6 @@ export async function undoReservationApprovalAction(
   }
 
   revalidatePath("/");
-  revalidatePath("/manage");
+  revalidatePath("/config");
   return {};
 }

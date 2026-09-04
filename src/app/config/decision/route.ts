@@ -13,7 +13,7 @@ import { isEmailDecision } from "@/lib/email/decision-link";
 import { getSessionUser } from "@/lib/auth/session";
 
 function manageRedirect(origin: string) {
-  const response = NextResponse.redirect(new URL("/manage", origin), 303);
+  const response = NextResponse.redirect(new URL("/config", origin), 303);
   response.headers.set("Cache-Control", "no-store");
   response.headers.set("Referrer-Policy", "no-referrer");
   return response;
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
   const session = await getSessionUser();
   if (!session) {
     const signIn = new URL("/sign-in", origin);
-    signIn.searchParams.set("next", "/manage/decision");
+    signIn.searchParams.set("next", "/config/decision");
     const response = NextResponse.redirect(signIn, 303);
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("Referrer-Policy", "no-referrer");

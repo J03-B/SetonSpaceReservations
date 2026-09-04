@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { EmailTemplateCards } from "@/app/manage/email-template-cards";
-import { EventCards, type ManagedEvent } from "@/app/manage/request-cards";
-import { RoomLayoutCards } from "@/app/manage/room-layout-cards";
-import { TempViewForm, type TempViewPerson } from "@/app/manage/temp-view-form";
-import { TrustQueue, type TrustCandidate } from "@/app/manage/trust-queue";
+import { EmailTemplateCards } from "@/app/config/email-template-cards";
+import { EventCards, type ManagedEvent } from "@/app/config/request-cards";
+import { RoomLayoutCards } from "@/app/config/room-layout-cards";
+import { TempViewForm, type TempViewPerson } from "@/app/config/temp-view-form";
+import { TrustQueue, type TrustCandidate } from "@/app/config/trust-queue";
 import { AccessBadge } from "@/components/account/access-badge";
 import { BRAND } from "@/lib/brand";
 import { emailLogoSrc } from "@/lib/email/logo";

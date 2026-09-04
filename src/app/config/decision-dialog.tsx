@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AuthMessage } from "@/components/auth/form-fields";
 import { decideReservationRequestAction } from "@/lib/auth/reservation-actions";
-import type { ManagedEvent } from "@/app/manage/request-cards";
+import type { ManagedEvent } from "@/app/config/request-cards";
 
 const CONFETTI_COLORS = ["#1a7f4b", "#3da56a", "#8fd4a8", "#e8f5ee"];
 
@@ -233,7 +233,7 @@ export function ApprovedDialog({
       if (event.key !== "Escape") return;
       event.preventDefault();
       onClose();
-      router.replace("/manage", { scroll: false });
+      router.replace("/config", { scroll: false });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -244,7 +244,7 @@ export function ApprovedDialog({
 
   function finish() {
     onClose();
-    router.replace("/manage", { scroll: false });
+    router.replace("/config", { scroll: false });
   }
 
   if (!mounted) return null;

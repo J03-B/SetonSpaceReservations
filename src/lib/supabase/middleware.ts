@@ -8,7 +8,7 @@ import {
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 
 const AUTH_ENTRY_PREFIXES = ["/sign-in", "/sign-up"];
-const PROTECTED_PREFIXES = ["/account", "/manage"];
+const PROTECTED_PREFIXES = ["/account", "/config"];
 
 function isAuthEntryPath(pathname: string): boolean {
   return AUTH_ENTRY_PREFIXES.some(

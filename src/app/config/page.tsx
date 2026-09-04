@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { ManageBoard, type ManagedEvent } from "@/app/manage/manage-board";
-import type { TempViewPerson } from "@/app/manage/temp-view-form";
-import type { TrustCandidate } from "@/app/manage/trust-queue";
+import { ManageBoard, type ManagedEvent } from "@/app/config/manage-board";
+import type { TempViewPerson } from "@/app/config/temp-view-form";
+import type { TrustCandidate } from "@/app/config/trust-queue";
 import { AuthMessage } from "@/components/auth/form-fields";
 import { CAMPUS_MANAGER_EMAIL } from "@/lib/auth/config";
 import {
@@ -185,13 +185,13 @@ export default async function ManagePage({
   if (params.decision) emailQuery.set("decision", params.decision);
   if (params.token) emailQuery.set("token", params.token);
   if (params.request && params.decision && params.token) {
-    redirect(`/manage/decision?${emailQuery.toString()}`);
+    redirect(`/config/decision?${emailQuery.toString()}`);
   }
 
   const session = await getSessionUser();
 
   if (!session) {
-    redirect(`/sign-in?next=${encodeURIComponent("/manage")}`);
+    redirect(`/sign-in?next=${encodeURIComponent("/config")}`);
   }
   if (!session.isManager) {
     redirect("/");

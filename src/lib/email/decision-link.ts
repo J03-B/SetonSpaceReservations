@@ -54,5 +54,5 @@ export function emailDecisionHref(
     decision,
     token,
   });
-  return `${origin}/manage/decision?${params.toString()}`;
+  return `${origin}/config/decision?${params.toString()}`;
 }

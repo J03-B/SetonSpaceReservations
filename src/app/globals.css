@@ -34,6 +34,8 @@
   --status-neutral: #5c6678;
   --role-admin: #7a5200;
   --role-admin-bg: #f5d76e;
+  --role-developer: #312e81;
+  --role-developer-bg: #e0e7ff;
   --role-manager: #1e4d8c;
   --role-manager-bg: #e8eef7;
   --role-guest: #1a7f4b;
@@ -73,6 +75,8 @@
   --color-status-warning-bg: var(--status-warning-bg);
   --color-role-admin: var(--role-admin);
   --color-role-admin-bg: var(--role-admin-bg);
+  --color-role-developer: var(--role-developer);
+  --color-role-developer-bg: var(--role-developer-bg);
   --color-role-manager: var(--role-manager);
   --color-role-manager-bg: var(--role-manager-bg);
   --color-role-guest: var(--role-guest);

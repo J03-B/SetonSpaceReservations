@@ -4,6 +4,7 @@ import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export type AccountStatus = "active" | "suspended" | "revoked";
 export type AccessLevel =
+  | "developer"
   | "admin"
   | "manager"
   | "trusted user"
@@ -14,8 +15,9 @@ export type AccessLabel =
   | "User"
   | "Trusted User"
   | "Manager"
-  | "Admin";
-export type AccountGroup = "User" | "Manager" | "Admin";
+  | "Admin"
+  | "Developer";
+export type AccountGroup = "User" | "Manager" | "Admin" | "Developer";
 
 export interface SessionUser {
   id: string;
@@ -31,6 +33,7 @@ export interface SessionUser {
   isRequester: boolean;
   isManager: boolean;
   isTechAdmin: boolean;
+  isTechDeveloper: boolean;
   isImpersonating: boolean;
   realAdminEmail: string | null;
 }
@@ -45,6 +48,7 @@ type UserRow = {
 };
 
 export function asAccessLevel(value: string | null | undefined): AccessLevel {
+  if (value === "developer") return "developer";
   if (value === "admin" || value === "tech_admin") return "admin";
   if (value === "manager") return "manager";
   if (value === "trusted user" || value === "trusted") return "trusted user";
@@ -54,10 +58,10 @@ export function asAccessLevel(value: string | null | undefined): AccessLevel {
 
 export function accessLabelFor(
   accessLevel: AccessLevel,
-  isTechAdmin: boolean,
   isCampusManager = false,
 ): AccessLabel {
-  if (isTechAdmin) return "Admin";
+  if (accessLevel === "developer") return "Developer";
+  if (accessLevel === "admin") return "Admin";
   if (accessLevel === "manager" || isCampusManager) return "Manager";
   if (accessLevel === "trusted user") return "Trusted User";
   if (accessLevel === "user") return "User";
@@ -75,20 +79,26 @@ function toSessionUser(
 ): SessionUser {
   const email = row.email;
   const storedAccess = asAccessLevel(row.spaces_access_level);
-  const isTechAdmin = storedAccess === "admin";
+  const isTechDeveloper = storedAccess === "developer";
+  const isTechAdmin = storedAccess === "admin" || isTechDeveloper;
   const isCampusManager = isCampusManagerEmail(email);
-  const isManager = storedAccess === "manager" || isTechAdmin || isCampusManager;
+  const isManager =
+    storedAccess === "manager" || isTechAdmin || isCampusManager;
   const accessLevel: AccessLevel =
-    isTechAdmin
-      ? "admin"
-      : isManager && storedAccess === "guest"
-        ? "manager"
-        : storedAccess;
-  const accountGroup: AccountGroup = isTechAdmin
-    ? "Admin"
-    : isManager
-      ? "Manager"
-      : "User";
+    isTechDeveloper
+      ? "developer"
+      : isTechAdmin
+        ? "admin"
+        : isManager && storedAccess === "guest"
+          ? "manager"
+          : storedAccess;
+  const accountGroup: AccountGroup = isTechDeveloper
+    ? "Developer"
+    : isTechAdmin
+      ? "Admin"
+      : isManager
+        ? "Manager"
+        : "User";
 
   return {
     id: row.id,
@@ -100,11 +110,12 @@ function toSessionUser(
     accountStatus:
       (row.account_status as AccountStatus | undefined) ?? "active",
     accessLevel,
-    accessLabel: accessLabelFor(storedAccess, isTechAdmin, isCampusManager),
+    accessLabel: accessLabelFor(storedAccess, isCampusManager),
     accountGroup,
     isRequester: canSubmitRequests(accessLevel, isTechAdmin),
     isManager,
     isTechAdmin,
+    isTechDeveloper,
     isImpersonating: Boolean(impersonation),
     realAdminEmail: impersonation?.realAdminEmail ?? null,
   };
@@ -175,7 +186,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!loaded) return null;
 
   const { session: realUser, supabase, authUser } = loaded;
-  if (!realUser.isTechAdmin) {
+  // Temporary view / impersonation is developer-only.
+  if (!realUser.isTechDeveloper) {
     return realUser;
   }
 

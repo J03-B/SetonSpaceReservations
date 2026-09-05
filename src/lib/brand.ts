@@ -5,5 +5,5 @@ export const BRAND = {
   logoAlt: "Seton School",
   email: "dev@setonschool.net",
   /** Phase 1 public site for email “Open Seton Spaces” (D-2026-08-30-email-open-site). */
-  siteUrl: "https://seton-space.vercel.app",
+  siteUrl: "https://spaces.setonschool.net",
 } as const;

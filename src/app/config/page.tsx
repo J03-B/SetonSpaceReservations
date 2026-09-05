@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ManageBoard, type ManagedEvent } from "@/app/config/manage-board";
 import type { TempViewPerson } from "@/app/config/temp-view-form";
 import type { TrustCandidate } from "@/app/config/trust-queue";
+import type { AdminAccountRow } from "@/app/config/users-admin-panel";
 import { AuthMessage } from "@/components/auth/form-fields";
 import { CAMPUS_MANAGER_EMAIL } from "@/lib/auth/config";
 import {
@@ -83,14 +84,18 @@ function roomGroupsForAccount(
   userId: string,
   accessLabel: AccessLabel,
 ): BuildingRoomGroup[] {
-  if (accessLabel !== "Manager" && accessLabel !== "Admin") {
+  if (
+    accessLabel !== "Manager" &&
+    accessLabel !== "Admin" &&
+    accessLabel !== "Developer"
+  ) {
     return [];
   }
 
   return groupManagedRoomsByBuilding(
     rooms,
     userId,
-    accessLabel === "Admin",
+    accessLabel === "Admin" || accessLabel === "Developer",
   );
 }
 
@@ -390,6 +395,40 @@ export default async function ManagePage({
       : Promise.resolve({ data: [] }),
   ]);
 
+  const adminAccounts: AdminAccountRow[] = (directoryResult.data ?? [])
+    .map(
+      (row: {
+        id: string;
+        full_name: string;
+        email: string;
+        access_level: string;
+        help_access_level?: string;
+        account_status?: string;
+      }) => {
+        const accessLevel = asAccessLevel(row.access_level);
+        const statusRaw = row.account_status ?? "active";
+        const accountStatus =
+          statusRaw === "suspended" || statusRaw === "revoked"
+            ? statusRaw
+            : "active";
+        const accessLabel = accessLabelFor(accessLevel, false);
+        return {
+          id: row.id,
+          fullName: row.full_name,
+          email: row.email,
+          accessLabel,
+          accountStatus,
+          canPromote:
+            accountStatus === "active" &&
+            (accessLevel === "guest" || accessLevel === "user"),
+        } satisfies AdminAccountRow;
+      },
+    )
+    .filter(
+      (row: AdminAccountRow) =>
+        row.accessLabel !== "Admin" && row.accessLabel !== "Developer",
+    );
+
   const directoryPeople: TempViewPerson[] = (directoryResult.data ?? []).map(
     (row: {
       id: string;
@@ -398,7 +437,7 @@ export default async function ManagePage({
       access_level: string;
     }) => {
       const accessLevel = asAccessLevel(row.access_level);
-      const accessLabel = accessLabelFor(accessLevel, accessLevel === "admin");
+      const accessLabel = accessLabelFor(accessLevel, false);
       return {
         id: row.id,
         fullName: row.full_name,
@@ -420,6 +459,7 @@ export default async function ManagePage({
       <div className="mt-8">
         <ManageBoard
           isAdmin={session.isTechAdmin}
+          isDeveloper={session.isTechDeveloper}
           rejected={toEvents(
             declinedRows,
             roomsById,
@@ -435,7 +475,12 @@ export default async function ManagePage({
             new Set(),
           )}
           trustCandidates={trustCandidates}
-          tempViewPeople={withCampusManager(directoryPeople, catalogRooms)}
+          adminAccounts={adminAccounts}
+          tempViewPeople={
+            session.isTechDeveloper
+              ? withCampusManager(directoryPeople, catalogRooms)
+              : []
+          }
           openDeclineRequestId={declineTarget}
           approvedEvent={approvedEvent}
           noticeApproved={noticeApproved}

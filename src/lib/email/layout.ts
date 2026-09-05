@@ -60,18 +60,22 @@ export interface EmailContent {
   rows: EmailRow[];
   actionLabel?: string;
   actionHref?: string;
+  /** Extra footer links (e.g. Help + Spaces). Shown before Questions when set. */
+  actionLinks?: Array<{ label: string; href: string }>;
   showQuestions?: boolean;
   logoSrc?: string;
+  /** Title next to logo. Defaults to BRAND.name. */
+  brandName?: string;
   dividerBeforeRows?: boolean;
   footerOutsideCard?: boolean;
   compactFooter?: boolean;
   afterRows?: string;
 }
 
-function brandHeaderHtml(logoSrc?: string): string {
+function brandHeaderHtml(logoSrc?: string, brandName: string = BRAND.name): string {
   if (!logoSrc) {
     return `<p style="margin: 0; font-size: 15px; font-weight: 600; color: #1e4d8c;">
-                  ${escapeHtml(BRAND.name)}
+                  ${escapeHtml(brandName)}
                 </p>`;
   }
 
@@ -81,7 +85,7 @@ function brandHeaderHtml(logoSrc?: string): string {
                       <img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(BRAND.logoAlt)}" width="80" height="32" style="height: 32px; width: auto; display: block; border: 0; outline: none;" />
                     </td>
                     <td style="vertical-align: middle; font-size: 15px; font-weight: 600; color: #1e4d8c;">
-                      ${escapeHtml(BRAND.name)}
+                      ${escapeHtml(brandName)}
                     </td>
                   </tr>
                 </table>`;
@@ -267,11 +271,23 @@ function rowHtml(row: EmailRow): string {
 }
 
 function footerParts(content: EmailContent, fontSize: string, marginTop: string) {
-  const actionHtml = content.actionLabel
-    ? content.actionHref
-      ? `<a href="${escapeHtml(content.actionHref)}" style="color: #1e4d8c; text-decoration: none;">${escapeHtml(content.actionLabel)}</a>`
-      : `<span style="color: #1e4d8c;">${escapeHtml(content.actionLabel)}</span>`
-    : "";
+  const linkPieces: string[] = [];
+  if (content.actionLinks?.length) {
+    for (const link of content.actionLinks) {
+      linkPieces.push(
+        `<a href="${escapeHtml(link.href)}" style="color: #1e4d8c; text-decoration: none;">${escapeHtml(link.label)}</a>`,
+      );
+    }
+  } else if (content.actionLabel) {
+    linkPieces.push(
+      content.actionHref
+        ? `<a href="${escapeHtml(content.actionHref)}" style="color: #1e4d8c; text-decoration: none;">${escapeHtml(content.actionLabel)}</a>`
+        : `<span style="color: #1e4d8c;">${escapeHtml(content.actionLabel)}</span>`,
+    );
+  }
+  const actionHtml = linkPieces.join(
+    `<span style="padding: 0 10px; color: #b8c0ce;">|</span>`,
+  );
   const questionsHtml =
     content.showQuestions === false
       ? ""
@@ -361,7 +377,7 @@ export function renderSetonEmail(content: EmailContent): {
           <table role="presentation" width="100%" align="center" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 420px; margin: 0 auto; background: #ffffff; border: 1px solid #d8dde6; border-radius: 12px;">
             <tr>
               <td align="center" style="padding: ${cardPadding}; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; text-align: center;">
-                ${brandHeaderHtml(content.logoSrc)}
+                ${brandHeaderHtml(content.logoSrc, content.brandName)}
                 ${headingHtml}
                 ${introHtml}
                 ${introAfterHtml}
@@ -415,7 +431,7 @@ export function renderSetonEmail(content: EmailContent): {
     .join("\n");
 
   const text = [
-    BRAND.name,
+    content.brandName ?? BRAND.name,
     ...(content.heading ? [content.heading] : []),
     "",
     content.intro,
@@ -424,13 +440,15 @@ export function renderSetonEmail(content: EmailContent): {
     textRows,
     ...(content.afterRows ? ["", content.afterRows] : []),
     "",
-    ...(content.actionLabel
-      ? [
-          content.actionHref
-            ? `${content.actionLabel}: ${content.actionHref}`
-            : content.actionLabel,
-        ]
-      : []),
+    ...(content.actionLinks?.length
+      ? content.actionLinks.map((link) => `${link.label}: ${link.href}`)
+      : content.actionLabel
+        ? [
+            content.actionHref
+              ? `${content.actionLabel}: ${content.actionHref}`
+              : content.actionLabel,
+          ]
+        : []),
     ...(content.showQuestions === false ? [] : [`Questions: ${BRAND.email}`]),
   ].join("\n");
 

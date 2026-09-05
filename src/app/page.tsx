@@ -18,18 +18,20 @@ export default async function HomePage({
 }) {
   const params = await searchParams;
   const { room } = params;
-  const campusEditMode = "edit-mainmap" in params;
-  const buildingEditMode =
-    typeof params["edit-building"] === "string"
-      ? params["edit-building"]
-      : "edit-building" in params
-        ? "corpus-christi"
-        : null;
   const [spaces, session, slots] = await Promise.all([
     getPublicSpaces(),
     getSessionUser(),
     getPublicAvailability(),
   ]);
+  const canEditMap = Boolean(session?.isTechDeveloper);
+  const campusEditMode = canEditMap && "edit-mainmap" in params;
+  const buildingEditMode = canEditMap
+    ? typeof params["edit-building"] === "string"
+      ? params["edit-building"]
+      : "edit-building" in params
+        ? "corpus-christi"
+        : null
+    : null;
   const ownOccupancy = session
     ? await getOwnOccupancyRanges(session.id)
     : [];

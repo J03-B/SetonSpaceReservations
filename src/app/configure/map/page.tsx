@@ -8,7 +8,7 @@ export const metadata = {
 
 export default async function ConfigureMapPage() {
   const session = await getSessionUser();
-  if (!session?.isTechAdmin) {
+  if (!session?.isTechDeveloper) {
     redirect("/");
   }
 

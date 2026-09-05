@@ -24,7 +24,7 @@ function readString(formData: FormData, key: string): string {
 }
 
 function callbackUrl(origin: string, next: string): string {
-  return `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  return `${origin}/auth/callback?next=${encodeURIComponent(next)}&app=spaces`;
 }
 
 export async function sendSignInCodeAction(
@@ -49,6 +49,7 @@ export async function sendSignInCodeAction(
     options: {
       shouldCreateUser: false,
       emailRedirectTo: callbackUrl(origin, next),
+      data: { auth_app: "spaces" },
     },
   });
 
@@ -125,6 +126,7 @@ export async function signUpAction(
       emailRedirectTo: callbackUrl(origin, "/account"),
       data: {
         full_name: fullName,
+        auth_app: "spaces",
       },
     },
   });
@@ -165,7 +167,7 @@ export async function resendConfirmationAction(
     type: "signup",
     email,
     options: {
-      emailRedirectTo: `${origin}/auth/callback?next=/account`,
+      emailRedirectTo: callbackUrl(origin, "/account"),
     },
   });
 

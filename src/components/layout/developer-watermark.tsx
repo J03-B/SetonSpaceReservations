@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-const CREDIT_LINE_ONE = "Developed by Joe Benin.";
+const CREDIT_LINE_ONE = "Developed by Joe Benin '26.";
 const CREDIT_LINE_TWO = "Support is appreciated!";
 const HIDE_DELAY_MS = 700;
 const DONATE_URL = "https://donate.stripe.com/bJe6oG70faX20aRfLU9ws01";
@@ -161,28 +161,38 @@ export function DeveloperWatermark() {
                 : "translate-x-2 opacity-0"
             } ${creditInteractive ? "" : "pointer-events-none"}`}
           >
-            <div className="flex w-max items-center gap-5 rounded-xl border border-border bg-surface p-4 shadow-lg sm:gap-6 sm:p-5">
+            <div className="flex w-max flex-col items-center gap-3 rounded-xl border border-border bg-surface p-4 text-center shadow-lg sm:gap-3.5 sm:p-5">
               <p
                 id={creditId}
                 role="tooltip"
-                className="text-left text-[13px] leading-tight font-medium text-text-primary sm:text-sm"
+                className="text-[13px] leading-tight font-medium text-text-primary sm:text-sm"
               >
                 <span className="block whitespace-nowrap">{CREDIT_LINE_ONE}</span>
-                <span className="block whitespace-nowrap">{CREDIT_LINE_TWO}</span>
               </p>
-              <a
-                href={DONATE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Donate to Joe Benin with Apple Pay or card"
-                className="watermark-donate-btn inline-flex h-14 w-14 shrink-0 items-center justify-center no-underline"
-                onPointerEnter={showCredit}
-                onClick={openDonateFromLink}
-              >
-                <span className="watermark-donate-btn-face inline-flex size-12 items-center justify-center rounded-full text-text-inverse sm:size-[3.25rem]">
-                  <DonateIcon />
+              <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+                <span className="whitespace-nowrap text-[13px] leading-tight font-medium text-text-primary sm:text-sm">
+                  {CREDIT_LINE_TWO}
                 </span>
-              </a>
+                <span
+                  aria-hidden
+                  className="text-base font-semibold leading-none text-text-secondary sm:text-lg"
+                >
+                  →
+                </span>
+                <a
+                  href={DONATE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Donate to Joe Benin '26 with Apple Pay or card"
+                  className="watermark-donate-btn inline-flex h-14 w-14 shrink-0 items-center justify-center no-underline"
+                  onPointerEnter={showCredit}
+                  onClick={openDonateFromLink}
+                >
+                  <span className="watermark-donate-btn-face inline-flex size-12 items-center justify-center rounded-full text-text-inverse sm:size-[3.25rem]">
+                    <DonateIcon />
+                  </span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

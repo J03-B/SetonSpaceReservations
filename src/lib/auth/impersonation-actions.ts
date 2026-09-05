@@ -24,8 +24,8 @@ export async function startTempViewAction(
   }
 
   const actor = await getAuthUser();
-  if (!actor?.isTechAdmin || actor.isImpersonating) {
-    return { error: "Only an admin can start a temporary view." };
+  if (!actor?.isTechDeveloper || actor.isImpersonating) {
+    return { error: "Only a developer can start a temporary view." };
   }
 
   const userIdValue = formData.get("user_id");
@@ -76,7 +76,7 @@ export async function startTempViewAction(
 
 export async function stopTempViewAction(): Promise<void> {
   const actor = await getAuthUser();
-  if (!actor?.isTechAdmin) {
+  if (!actor?.isTechDeveloper) {
     redirect("/account");
   }
 

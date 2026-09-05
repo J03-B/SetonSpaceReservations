@@ -7,6 +7,7 @@ const ACCESS_BADGE_STYLES: Record<AccessLabel, string> = {
   "Trusted User": "bg-role-trusted-bg text-role-trusted",
   Manager: "bg-role-manager-bg text-role-manager",
   Admin: "bg-role-admin-bg text-role-admin",
+  Developer: "bg-role-developer-bg text-role-developer",
 };
 
 export function AccessBadge({

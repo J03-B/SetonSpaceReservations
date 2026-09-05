@@ -184,7 +184,7 @@ export const EMAIL_RAW_FIELDS: ReservationEmailFields = {
 export function buildApprovedEmail(input: ReservationEmailFields) {
   const shortDate = subjectDate(input.startAt);
   return {
-    subject: `Reservation approved — ${input.roomName} — ${shortDate}`,
+    subject: `Reservation approved • ${input.roomName} • ${shortDate}`,
     ...renderSetonEmail({
       heading: "Reservation approved",
       intro: "",
@@ -231,7 +231,7 @@ export function buildDeclinedEmail(input: ReservationEmailFields) {
     }),
   );
   return {
-    subject: `Reservation declined — ${input.roomName} — ${shortDate}`,
+    subject: `Reservation declined • ${input.roomName} • ${shortDate}`,
     ...renderSetonEmail({
       heading: "Reservation declined",
       intro: "",
@@ -244,7 +244,7 @@ export function buildDeclinedEmail(input: ReservationEmailFields) {
 export function buildRequesterSubmittedEmail(input: ReservationEmailFields) {
   const shortDate = subjectDate(input.startAt);
   return {
-    subject: `Reservation submitted — ${input.roomName} — ${shortDate}`,
+    subject: `Reservation submitted • ${input.roomName} • ${shortDate}`,
     ...renderSetonEmail({
       heading: "Reservation submitted",
       intro: "",
@@ -277,7 +277,7 @@ export function buildMailboxNewRequestEmail(input: ReservationEmailFields) {
       ? "{decline_href}"
       : emailDecisionHref(input.requestId, "declined"));
   return {
-    subject: `New reservation request — ${input.roomName} — ${shortDate}`,
+    subject: `New reservation request • ${input.roomName} • ${shortDate}`,
     ...renderSetonEmail({
       heading: "New reservation request",
       intro: "",

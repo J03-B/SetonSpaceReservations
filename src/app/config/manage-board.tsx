@@ -4,6 +4,10 @@ import { EventCards, type ManagedEvent } from "@/app/config/request-cards";
 import { RoomLayoutCards } from "@/app/config/room-layout-cards";
 import { TempViewForm, type TempViewPerson } from "@/app/config/temp-view-form";
 import { TrustQueue, type TrustCandidate } from "@/app/config/trust-queue";
+import {
+  UsersAdminPanel,
+  type AdminAccountRow,
+} from "@/app/config/users-admin-panel";
 import { AccessBadge } from "@/components/account/access-badge";
 import { BRAND } from "@/lib/brand";
 import { emailLogoSrc } from "@/lib/email/logo";
@@ -36,20 +40,24 @@ function ManageColumn({
 
 export async function ManageBoard({
   isAdmin,
+  isDeveloper,
   rejected,
   requests,
   reservations,
   trustCandidates,
+  adminAccounts,
   tempViewPeople,
   openDeclineRequestId,
   approvedEvent,
   noticeApproved,
 }: {
   isAdmin: boolean;
+  isDeveloper: boolean;
   rejected: ManagedEvent[];
   requests: ManagedEvent[];
   reservations: ManagedEvent[];
   trustCandidates: TrustCandidate[];
+  adminAccounts: AdminAccountRow[];
   tempViewPeople: TempViewPerson[];
   openDeclineRequestId?: string;
   approvedEvent?: ManagedEvent;
@@ -59,10 +67,13 @@ export async function ManageBoard({
 
   return (
     <div className="space-y-10">
-      {isAdmin ? (
+      {isDeveloper ? (
         <div>
           <h2 className="flex justify-center">
-            <AccessBadge label="Admin" className="px-4 py-2 text-lg font-semibold" />
+            <AccessBadge
+              label="Developer"
+              className="px-4 py-2 text-lg font-semibold"
+            />
           </h2>
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             <ManageColumn title="Room layouts" className="min-w-[16rem]">
@@ -79,11 +90,24 @@ export async function ManageBoard({
             <ManageColumn title="Temporary view" className="min-w-[16rem]">
               <TempViewForm people={tempViewPeople} />
             </ManageColumn>
+          </div>
+        </div>
+      ) : null}
+
+      {isAdmin ? (
+        <div>
+          <h2 className="flex justify-center">
+            <AccessBadge label="Admin" className="px-4 py-2 text-lg font-semibold" />
+          </h2>
+          <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             <ManageColumn
               title="Trusted access requests"
               className="min-w-[16rem]"
             >
               <TrustQueue candidates={trustCandidates} />
+            </ManageColumn>
+            <ManageColumn title="Users" className="min-w-[22rem]">
+              <UsersAdminPanel accounts={adminAccounts} />
             </ManageColumn>
           </div>
         </div>
